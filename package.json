@@ -1,0 +1,133 @@
+{
+  "name": "@typemvc/core",
+  "version": "0.1.0",
+  "description": "A client-side MVC framework for TypeScript: controllers, typed views, signals reactivity, and DI. No JSX, no virtual DOM, no SSR.",
+  "type": "module",
+  "license": "MIT",
+  "author": "coretravis",
+  "homepage": "https://github.com/coretravis/typemvc#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coretravis/typemvc.git"
+  },
+  "bugs": {
+    "url": "https://github.com/coretravis/typemvc/issues"
+  },
+  "keywords": [
+    "typescript",
+    "framework",
+    "spa",
+    "mvc",
+    "signals",
+    "reactivity",
+    "controllers",
+    "frontend",
+    "web"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./vite": {
+      "import": {
+        "types": "./dist/vite-plugin/index.d.ts",
+        "default": "./dist/vite-plugin/index.js"
+      },
+      "require": {
+        "types": "./dist/vite-plugin/index.d.cts",
+        "default": "./dist/vite-plugin/index.cjs"
+      }
+    },
+    "./parser": {
+      "import": {
+        "types": "./dist/runtime-parser/index.d.ts",
+        "default": "./dist/runtime-parser/index.js"
+      },
+      "require": {
+        "types": "./dist/runtime-parser/index.d.cts",
+        "default": "./dist/runtime-parser/index.cjs"
+      }
+    },
+    "./volar": {
+      "import": {
+        "types": "./dist/volar-plugin/index.d.ts",
+        "default": "./dist/volar-plugin/index.js"
+      },
+      "require": {
+        "types": "./dist/volar-plugin/index.d.cts",
+        "default": "./dist/volar-plugin/index.cjs"
+      }
+    },
+    "./testing": {
+      "import": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      },
+      "require": {
+        "types": "./dist/testing/index.d.cts",
+        "default": "./dist/testing/index.cjs"
+      }
+    },
+    "./testing/vitest": {
+      "import": {
+        "types": "./dist/testing/vitest.d.ts",
+        "default": "./dist/testing/vitest.js"
+      },
+      "require": {
+        "types": "./dist/testing/vitest.d.cts",
+        "default": "./dist/testing/vitest.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "ci": "pnpm lint && pnpm typecheck && pnpm test:run && pnpm build",
+    "prepublishOnly": "pnpm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@types/node": "^25.9.3",
+    "@vitest/coverage-v8": "latest",
+    "eslint": "latest",
+    "happy-dom": "^20.10.5",
+    "prettier": "latest",
+    "tsup": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vitest": "latest"
+  },
+  "packageManager": "pnpm@8.15.1"
+}

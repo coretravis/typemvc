@@ -1,0 +1,65 @@
+name: Release (VS Code extension)
+
+# Builds the TypeMVC VS Code extension and publishes it to the Marketplace,
+# then attaches the .vsix to a GitHub Release, when an ext-v* tag is pushed
+# (e.g. ext-v0.1.0). Requires the VSCE_PAT secret (a Marketplace personal
+# access token for the "typemvc" publisher).
+#
+# The extension bundles the framework's compiled Volar plugin, so the framework
+# must be built (pnpm build at the repo root) BEFORE the extension is bundled.
+
+on:
+  push:
+    tags:
+      - 'ext-v*'
+
+permissions:
+  contents: write # attach the .vsix to the GitHub Release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build framework (provides dist/ for the extension bundle)
+        run: pnpm run build
+
+      - name: Install extension dependencies
+        working-directory: extensions/tmvc-syntax
+        run: npm ci
+
+      - name: Bundle extension
+        working-directory: extensions/tmvc-syntax
+        run: node build.mjs
+
+      # typescript ships in the .vsix (the server resolves it at runtime via
+      # require.resolve), so do NOT pass --no-dependencies.
+      - name: Package .vsix
+        working-directory: extensions/tmvc-syntax
+        run: npx vsce package --out tmvc-syntax.vsix
+
+      - name: Publish to VS Code Marketplace
+        working-directory: extensions/tmvc-syntax
+        run: npx vsce publish --packagePath tmvc-syntax.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Attach .vsix to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: extensions/tmvc-syntax/tmvc-syntax.vsix
+          generate_release_notes: true

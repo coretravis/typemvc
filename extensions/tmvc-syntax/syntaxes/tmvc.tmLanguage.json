@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "TypeMVC",
+  "scopeName": "text.html.tmvc",
+  "fileTypes": [
+    "tmvc"
+  ],
+  "patterns": [
+    {
+      "include": "#interpolation"
+    },
+    {
+      "include": "text.html.basic"
+    }
+  ],
+  "repository": {
+    "interpolation": {
+      "name": "meta.template.expression.tmvc",
+      "begin": "(\\$\\{)",
+      "end": "(\\})",
+      "applyEndPatternLast": 1,
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.template-expression.begin.tmvc"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.template-expression.end.tmvc"
+        }
+      },
+      "contentName": "meta.embedded.block.typescript",
+      "patterns": [
+        {
+          "include": "#nested-braces"
+        },
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "nested-braces": {
+      "name": "meta.block.ts",
+      "begin": "(\\{)",
+      "end": "(\\})",
+      "applyEndPatternLast": 1,
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.section.block.begin.bracket.curly.ts"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.block.end.bracket.curly.ts"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#nested-braces"
+        },
+        {
+          "include": "source.ts"
+        }
+      ]
+    }
+  }
+}

@@ -30,6 +30,30 @@ class HomeController extends Controller {
 <h1>${context.model.title}</h1>
 ```
 
+## Quick start
+
+Scaffold a new app into a fresh folder, then run it:
+
+```bash
+npm create @typemvc@latest my-app
+# or: pnpm create @typemvc my-app
+# or: yarn create @typemvc my-app
+
+cd my-app
+npm install
+npm run dev
+```
+
+Requires Node.js >= 20. The generated app is a Vite SPA already wired with the
+`@typemvc/core/vite` plugin, a typed `tsconfig.json`, a bootstrap entry, a Home
+controller with a reactive counter, a 404 catch-all, and matching `.tmvc` views.
+Open the dev URL and start editing `src/`.
+
+To grow it: add a controller as a class that extends `Controller` and register
+it with `app.route()` in `src/main.ts`; add a view, layout, or component by
+creating a `.tmvc` file in the matching folder. See [Editor support](#editor-support)
+for typed `.tmvc` intelligence in VS Code.
+
 ## How it works
 
 TypeMVC keeps the three MVC roles separate and gives each one a single job.
@@ -61,14 +85,17 @@ action updates the live DOM on its own. There is no re-render and no diff.
   partials, components, logging, and a first-party testing kit ship in the box,
   and every part is tree shakeable.
 
-## Installation
+## Add to an existing project
+
+If you are not starting from `npm create @typemvc` (see [Quick start](#quick-start)),
+install the package into an existing Vite project:
 
 ```bash
 pnpm add @typemvc/core
 # or: npm install @typemvc/core
 ```
 
-Requires Node.js >= 20. The Vite plugin compiles `.tmvc` views:
+Requires Node.js >= 20. Register the Vite plugin that compiles `.tmvc` views:
 
 ```ts
 // vite.config.ts

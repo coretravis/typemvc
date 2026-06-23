@@ -6,4 +6,5 @@ import { typemvcPlugin } from '@typemvc/core/vite';
 export default defineConfig({
   plugins: [typemvcPlugin() as PluginOption],
   appType: 'spa',
+  esbuild: { keepNames: true },
 });

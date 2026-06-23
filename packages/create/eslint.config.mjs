@@ -26,6 +26,8 @@ export default defineConfig(
     ...tseslint.configs.disableTypeChecked,
   },
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'extensions/**', 'packages/**', 'sandbox/**'],
+    // template/ is consumer app source (different tsconfig, decorators);
+    // dist/ is build output. Neither is part of this package's lint surface.
+    ignores: ['dist/**', 'node_modules/**', 'template/**'],
   },
 );

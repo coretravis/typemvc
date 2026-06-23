@@ -1,0 +1,5 @@
+<main>
+  <h1>404, not found</h1>
+  <p>No route matched <code>${context.router.current}</code>.</p>
+  <p><a href="/">Back home</a></p>
+</main>

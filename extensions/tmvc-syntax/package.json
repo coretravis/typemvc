@@ -24,6 +24,7 @@
     "vscode": "^1.82.0"
   },
   "main": "./out/extension.js",
+  "icon": "icon.png",
   "activationEvents": [
     "onLanguage:tmvc"
   ],
@@ -72,13 +73,13 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.82.0",
-    "@vscode/vsce": "latest",
-    "esbuild": "^0.28.1"
-  },
-  "dependencies": {
     "@volar/language-server": "~2.4.0",
-    "typescript": "^5.0.0",
+    "@vscode/vsce": "latest",
+    "esbuild": "^0.28.1",
     "volar-service-typescript": "volar-2.4",
     "vscode-languageclient": "^9.0.1"
+  },
+  "dependencies": {
+    "typescript": "^5.0.0"
   }
 }

@@ -7,7 +7,11 @@
     "outDir": "./out",
     "sourceMap": true,
     "lib": ["ES2020"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@typemvc/core/volar": ["../../dist/volar-plugin/index.d.cts"]
+    }
   },
   "include": [
     "src/**/*.ts"

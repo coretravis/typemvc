@@ -34,6 +34,9 @@ jobs:
       - name: Lint, typecheck, test, build
         run: pnpm run ci
 
+      - name: Check @typemvc/create package
+        run: pnpm --filter @typemvc/create run ci
+
       - name: Build VS Code extension
         working-directory: extensions/tmvc-syntax
         run: |

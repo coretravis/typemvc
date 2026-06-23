@@ -40,3 +40,6 @@ pnpm-debug.log*
 
 # Miscellaneous
 docs/system/
+
+# Local-only language-server test sandbox (not part of the published package)
+sandbox/

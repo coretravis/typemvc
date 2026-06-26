@@ -4,11 +4,14 @@
 [![CI](https://github.com/coretravis/typemvc/actions/workflows/ci.yml/badge.svg)](https://github.com/coretravis/typemvc/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/@typemvc/core.svg)](./LICENSE)
 
-TypeMVC is a client-side MVC framework for TypeScript. You write controllers as
-classes that map routes to actions and return views, and views as plain `.tmvc`
-documents that render a typed model. Controller state is held in signals, so when
-it changes the framework updates only the DOM nodes that depend on it. No JSX, no
-virtual DOM, no server-side rendering.
+TypeMVC is a browser-first TypeScript framework for controller-led applications,
+document-style `.tmvc` views, typed models, dependency injection, validation, and
+fine-grained reactive DOM updates.
+
+A route selects a controller action. The action coordinates application work and
+returns a view result. The view receives a typed context and renders a document.
+Signals keep the DOM current by updating only the bindings that depend on a
+changed value. No JSX, no virtual DOM, no server-side rendering.
 
 > Published on npm as `@typemvc/core`.
 
@@ -56,34 +59,43 @@ for typed `.tmvc` intelligence in VS Code.
 
 ## How it works
 
-TypeMVC keeps the three MVC roles separate and gives each one a single job.
+TypeMVC is opinionated about where work belongs.
 
-- **Controllers own the complexity.** Dependency injection, data fetching,
-  business logic, and state all live in the controller. A controller is a long
-  lived TypeScript class; its fields are signals, and the actions it exposes map
-  routes to view results.
+- **Controllers own route workflows.** Dependencies, validation decisions, state
+  coordination, and view results live in controller actions where application
+  flow is easiest to reason about.
+- **Services own reusable application work.** Data access, persistence adapters,
+  domain behavior, and cross-feature logic stay outside the view layer and are
+  resolved through explicit dependency injection.
 - **Views are documents.** A `.tmvc` view is markup with `${...}` expressions.
-  It has no imports, no exports, no class, and no awareness of services. It
-  receives a typed context and renders it.
-- **The model is typed end to end.** A view declares which action it belongs to,
-  and its `context.model` is inferred from that action's return type. Model
-  access is checked in your editor and at build time.
+  It receives `context`, renders a typed model, and does not fetch data, resolve
+  services, or become a workflow container.
+- **Components own reusable UI.** Components receive `props`, render slots, and
+  may use `@local` for small instance-scoped interaction state such as open
+  state, selected tabs, temporary input text, or event-listener cleanup.
+- **Signals own fine-grained updates.** When a signal changes, TypeMVC updates
+  the text node, attribute, fragment, or keyed list that depends on it.
 
-Because controller state is reactive, a change from a timer, a socket, or a user
-action updates the live DOM on its own. There is no re-render and no diff.
+The result is a frontend codebase with a clear home for every concern: route
+workflow in controllers, reusable behavior in services, document markup in
+views, reusable UI in components, and live DOM updates handled by the renderer.
 
 ## Why TypeMVC
 
-- **A familiar shape.** Controllers, actions, and views are an established way to
-  structure an application. TypeMVC brings that structure to the browser.
-- **Reactivity you do not have to manage.** A signals runtime tracks
-  dependencies and updates only what changed. Views never opt in to reactivity;
-  the framework wires signals to DOM nodes for them.
+- **Application structure first.** TypeMVC gives browser applications a clear
+  architectural spine instead of making every concern orbit the component tree.
+- **Document views stay readable.** Views are documents with typed expressions,
+  not classes, hooks, providers, or service containers.
+- **Reactivity stays focused.** Signals update only the DOM bindings that depend
+  on changed values. Views do not manually subscribe, diff, or re-render.
 - **Secure by default.** Every dynamic value is HTML escaped. Raw HTML, raw
   URLs, and raw attributes require an explicit opt in.
-- **Batteries included.** Routing, dependency injection, validation, layouts,
-  partials, components, logging, and a first-party testing kit ship in the box,
-  and every part is tree shakeable.
+- **Typed boundaries.** Controller return types, `@model`, `@props`, DTO binding,
+  validation, and Volar tooling make application contracts visible in the
+  editor.
+- **A cohesive runtime.** Routing, dependency injection, validation, layouts,
+  partials, components, `@local` component state, logging, and first-party
+  testing helpers are designed as one framework surface.
 
 ## Add to an existing project
 

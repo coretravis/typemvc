@@ -16,6 +16,7 @@ import {
   createTmvcLanguagePlugin,
   createTmvcSnapshot,
   generateVirtualTs,
+  getTmvcDiagnostics,
   getControllerCandidatePaths,
   getControllerCandidatePathsByName,
   getComponentCandidatePathsByName,
@@ -1110,3 +1111,110 @@ describe('046: unequal-length argument mapping', () => {
     expect(lastEqualIdx).toBeLessThan(firstUnequalIdx);
   });
 });
+
+// ---------------------------------------------------------------------------
+// @local block typing, mapping, diagnostics, and grammar
+// ---------------------------------------------------------------------------
+
+const COMPONENT_LOCAL =
+  '@props { title: string }\n' +
+  '@local {\n' +
+  '  const open = signal(false);\n' +
+  '  const toggle = () => open.update(v => !v);\n' +
+  '}\n' +
+  '<button onclick="${toggle}">${props.title}</button>';
+
+describe('@local virtual TypeScript', () => {
+  const COMP_ID = 'src/components/Accordion.tmvc';
+
+  it('imports the reactivity primitives when a @local block is present (AC1, AC4)', () => {
+    const { code } = generateVirtualTs(COMPONENT_LOCAL, COMP_ID, null);
+    expect(code).toContain("import { signal, computed, effect, batch, onCleanup } from '@typemvc/core';");
+  });
+
+  it('lifts the statements into the render body before return html (AC1)', () => {
+    const { code } = generateVirtualTs(COMPONENT_LOCAL, COMP_ID, null);
+    const stmtIdx = code.indexOf('const open = signal(false);');
+    const retIdx = code.indexOf('  return html`');
+    expect(stmtIdx).toBeGreaterThan(-1);
+    expect(stmtIdx).toBeLessThan(retIdx);
+  });
+
+  it('types props from @props so the block sees the declared shape (AC2)', () => {
+    const { code } = generateVirtualTs(COMPONENT_LOCAL, COMP_ID, null);
+    expect(code).toContain('type __TmvcProps = { title: string } & { readonly children?: Fragment };');
+    expect(code).toContain('render(props: __TmvcProps)');
+  });
+
+  it('maps the lifted block region back to the source block region (AC3)', () => {
+    const result = generateVirtualTs(COMPONENT_LOCAL, COMP_ID, null);
+    expect(result.extraMappings.length).toBeGreaterThanOrEqual(1);
+    const mapping = result.extraMappings[result.extraMappings.length - 1];
+    const genStart = mapping?.generatedOffsets[0] ?? -1;
+    const srcStart = mapping?.sourceOffsets[0] ?? -1;
+    const len = mapping?.lengths[0] ?? 0;
+    expect(result.code.slice(genStart, genStart + len)).toContain('const open = signal(false);');
+    expect(COMPONENT_LOCAL.slice(srcStart, srcStart + len)).toContain('const open = signal(false);');
+  });
+
+  it('leaves a component without @local unchanged (AC8)', () => {
+    const result = generateVirtualTs('@props { x: number }\n<span>${props.x}</span>', 'src/components/Stat.tmvc', null);
+    expect(result.code).not.toContain('signal, computed, effect');
+    expect(result.extraMappings).toHaveLength(0);
+  });
+});
+
+describe('@local diagnostics (AC5, AC6)', () => {
+  const COMP_ID = 'src/components/X.tmvc';
+  const VIEW_ID = 'src/views/home/index.tmvc';
+
+  it('reports a [TypeMVC] diagnostic for fetch inside a block', () => {
+    const diags = getTmvcDiagnostics('@local {\n  const r = fetch("/x");\n}\n<div></div>', COMP_ID);
+    const fetchDiag = diags.find((d) => d.message.includes('fetch'));
+    expect(fetchDiag?.message).toContain('[TypeMVC]');
+    expect(fetchDiag?.message).toContain('controller');
+    expect(fetchDiag?.severity).toBe('error');
+  });
+
+  it('reports a [TypeMVC] diagnostic for await inside a block', () => {
+    const diags = getTmvcDiagnostics('@local {\n  const v = await thing();\n}\n<div></div>', COMP_ID);
+    expect(diags.some((d) => d.message.includes('async and await'))).toBe(true);
+  });
+
+  it('reports the components-only rule for @local in a view', () => {
+    const diags = getTmvcDiagnostics('@local {\n  const a = 1;\n}\n<div></div>', VIEW_ID);
+    expect(diags.some((d) => d.message.includes('only allowed in component'))).toBe(true);
+  });
+
+  it('returns no diagnostics for a clean component block', () => {
+    const diags = getTmvcDiagnostics('@local {\n  const open = signal(false);\n}\n<div></div>', COMP_ID);
+    expect(diags).toHaveLength(0);
+  });
+});
+
+describe('@local grammar highlighting (AC7)', () => {
+  const grammar = JSON.parse(
+    readFileSync(join(extRoot, 'syntaxes/tmvc.tmLanguage.json'), 'utf-8'),
+  ) as {
+    patterns: { include?: string }[];
+    repository: Record<string, {
+      beginCaptures?: Record<string, { name?: string }>;
+      contentName?: string;
+    }>;
+  };
+
+  it('includes the local-block pattern at the top level', () => {
+    expect(grammar.patterns.some((p) => p.include === '#local-block')).toBe(true);
+  });
+
+  it('scopes @local as a keyword', () => {
+    const rule = grammar.repository['local-block'];
+    expect(rule?.beginCaptures?.['1']?.name).toContain('keyword');
+  });
+
+  it('embeds the block body as TypeScript', () => {
+    const rule = grammar.repository['local-block'];
+    expect(rule?.contentName).toContain('typescript');
+  });
+});
+

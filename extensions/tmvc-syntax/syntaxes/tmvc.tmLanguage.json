@@ -7,6 +7,9 @@
   ],
   "patterns": [
     {
+      "include": "#local-block"
+    },
+    {
       "include": "#interpolation"
     },
     {
@@ -14,6 +17,34 @@
     }
   ],
   "repository": {
+    "local-block": {
+      "name": "meta.local.tmvc",
+      "begin": "^\\s*(@local)\\s*(\\{)",
+      "end": "(\\})",
+      "applyEndPatternLast": 1,
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.local.tmvc"
+        },
+        "2": {
+          "name": "punctuation.section.block.begin.bracket.curly.ts"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.block.end.bracket.curly.ts"
+        }
+      },
+      "contentName": "meta.embedded.block.typescript",
+      "patterns": [
+        {
+          "include": "#nested-braces"
+        },
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
     "interpolation": {
       "name": "meta.template.expression.tmvc",
       "begin": "(\\$\\{)",

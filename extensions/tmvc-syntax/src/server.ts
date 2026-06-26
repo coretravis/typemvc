@@ -3,11 +3,49 @@ import { fileURLToPath } from 'node:url';
 import * as node from '@volar/language-server/node';
 import type { VirtualCode, IScriptSnapshot } from '@volar/language-core';
 import { URI } from 'vscode-uri';
-import { createTmvcLanguagePlugin } from '@typemvc/core/volar';
+import { createTmvcLanguagePlugin, getTmvcDiagnostics } from '@typemvc/core/volar';
 import type { TmvcSnapshot } from '@typemvc/core/volar';
 import * as tsService from 'volar-service-typescript';
 
 const ScriptKind = { TS: 3, Deferred: 7 } as const;
+
+// Surfaces the .tmvc validator findings (the @local rules and forbidden
+// constructs) as diagnostics. Type errors come from the TypeScript service over
+// the virtual file; these cover the cases that are not TypeScript errors, such
+// as fetch in a block or @local in a view.
+function createTmvcDiagnosticPlugin() {
+  return {
+    name: 'tmvc-validate',
+    capabilities: {
+      diagnosticProvider: {
+        interFileDependencies: false,
+        workspaceDiagnostics: false,
+      },
+    },
+    create() {
+      return {
+        provideDiagnostics(document: { uri: string; getText: () => string }) {
+          if (!document.uri.endsWith('.tmvc')) return [];
+          let fileName = document.uri;
+          try {
+            fileName = fileURLToPath(document.uri);
+          } catch {
+            // Non-file uri: fall back to the raw uri for the components-only check.
+          }
+          return getTmvcDiagnostics(document.getText(), fileName).map((d) => ({
+            range: {
+              start: { line: d.line, character: d.startColumn },
+              end: { line: d.line, character: d.endColumn },
+            },
+            message: d.message,
+            severity: node.DiagnosticSeverity.Error,
+            source: 'tmvc',
+          }));
+        },
+      };
+    },
+  };
+}
 
 function createUriAdapterPlugin(asFileName: (uri: URI) => string, workspaceRoot: string) {
   const inner = createTmvcLanguagePlugin({ workspaceRoot });
@@ -104,7 +142,7 @@ connection.onInitialize((params) => {
         throw err;
       }
     }),
-    tsService.create(ts),
+    [tsService.create(ts), createTmvcDiagnosticPlugin()].flat(),
   );
 });
 

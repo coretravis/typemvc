@@ -265,6 +265,12 @@ export interface LocalBlock {
   readonly startLine: number;
   /** Number of source lines the block spans. */
   readonly lineCount: number;
+  /**
+   * Offset in the body where the lifted region begins (the start of the
+   * `@local` line). `statements` has the same length, so source offset
+   * `sourceStart + d` aligns with lifted offset `d`.
+   */
+  readonly sourceStart: number;
 }
 
 // Matches `@local` at the start of a line, allowing leading whitespace.
@@ -384,7 +390,7 @@ export function extractLocalBlock(body: string): LocalBlock | null {
 
   const markup = blankRegion(body, atIndex, closeBrace + 1);
 
-  return { statements, markup, startLine, lineCount };
+  return { statements, markup, startLine, lineCount, sourceStart: regionStart };
 }
 
 // ---------------------------------------------------------------------------

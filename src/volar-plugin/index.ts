@@ -1,6 +1,12 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { escapeTmvcMarkup, extractDirective } from '../vite-plugin/index.js';
+import {
+  escapeTmvcMarkup,
+  extractDirective,
+  extractLocalBlock,
+  validateTmvcSource,
+  describeValidationError,
+} from '../vite-plugin/index.js';
 
 // ---------------------------------------------------------------------------
 // Public Volar-compatible interfaces
@@ -148,6 +154,15 @@ const PREAMBLE_RENDER_COMPONENT =
   '\n' +
   'export default function render(props: { readonly children?: Fragment } & Record<string, unknown>): Fragment {\n' +
   '  return html`';
+
+// Imported into a component virtual file that declares a @local block so the
+// lifted statements type-check against the reactivity primitives.
+const PREAMBLE_REACTIVITY =
+  "import { signal, computed, effect, batch, onCleanup } from '@typemvc/core';\n";
+
+// The line that opens the template literal; the @local statements are spliced in
+// just before it.
+const RETURN_HTML = '  return html`';
 
 // With @props <type>: props are the declared type, plus an always-available
 // optional children slot (any caller may project content, issue 043).
@@ -763,16 +778,40 @@ export function generateVirtualTs(
   componentImports?: ReadonlyMap<string, string>,
 ): TmvcGeneratedTs {
   const { body, directive } = extractDirective(source);
-  const escaped = escapeTmvcMarkup(body);
   const normalizedPath = tmvcFilePath.replace(/\\/g, '/');
   const isComponent = normalizedPath.includes('/components/');
 
+  // A @local block (component only) lifts to function-scope statements that tsc
+  // type-checks; the markup it came from is blanked.
+  const localBlock = isComponent ? extractLocalBlock(body) : null;
+  const escaped = escapeTmvcMarkup(localBlock !== null ? localBlock.markup : body);
+
   let preamble: string;
+  let localBlockMapping: TmvcMapping | null = null;
 
   if (isComponent) {
-    preamble = directive?.kind === 'props'
+    let base = directive?.kind === 'props'
       ? buildComponentPropsPreamble(directive.expr)
       : PREAMBLE_IMPORTS_COMPONENT + PREAMBLE_RENDER_COMPONENT;
+    if (localBlock !== null) {
+      // Import the reactivity primitives after the html import.
+      base = base.replace(
+        "import { html } from '@typemvc/core';\n",
+        "import { html } from '@typemvc/core';\n" + PREAMBLE_REACTIVITY,
+      );
+      // Splice the lifted statements in just before `  return html\``, and map the
+      // block source region to the lifted region (equal length, so a type error
+      // lands on the real expression in the .tmvc file).
+      const retIdx = base.lastIndexOf(RETURN_HTML);
+      base = base.slice(0, retIdx) + localBlock.statements + '\n' + base.slice(retIdx);
+      localBlockMapping = {
+        sourceOffsets: [localBlock.sourceStart],
+        generatedOffsets: [retIdx],
+        lengths: [localBlock.statements.length],
+        data: ALL_FEATURES,
+      };
+    }
+    preamble = base;
   } else if (directive?.kind === 'model-type') {
     preamble = buildRawTypePreamble(directive.expr);
   } else if (ownerControllerPath !== null) {
@@ -850,9 +889,46 @@ export function generateVirtualTs(
     }
   }
 
+  if (localBlockMapping !== null) {
+    extraMappings = [...extraMappings, localBlockMapping];
+  }
+
   const code = preamble + escaped + VIRTUAL_SUFFIX;
 
   return { code, preambleLength: preamble.length, controllerPath: ownerControllerPath, extraMappings };
+}
+
+// ---------------------------------------------------------------------------
+// Source-level diagnostics
+// ---------------------------------------------------------------------------
+
+/**
+ * A diagnostic reported directly on .tmvc source (not via the virtual file).
+ * Columns are zero-based; the range covers the offending line. Carries the
+ * forbidden-construct and @local rules that are not TypeScript type errors.
+ */
+export interface TmvcDiagnostic {
+  readonly line: number;
+  readonly startColumn: number;
+  readonly endColumn: number;
+  readonly message: string;
+  readonly severity: 'error';
+}
+
+/**
+ * Runs the .tmvc validator and returns its findings as editor diagnostics with
+ * `[TypeMVC]` messages. The file id enforces the components-only `@local` rule;
+ * the in-block denylist applies regardless. The VS Code extension surfaces these
+ * alongside the TypeScript errors derived from the virtual file.
+ */
+export function getTmvcDiagnostics(source: string, fileName: string): TmvcDiagnostic[] {
+  return validateTmvcSource(source, fileName).map((err) => ({
+    line: err.line - 1,
+    startColumn: 0,
+    endColumn: err.source.length,
+    message: '[TypeMVC] ' + describeValidationError(err),
+    severity: 'error' as const,
+  }));
 }
 
 // ---------------------------------------------------------------------------

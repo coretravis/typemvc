@@ -2,7 +2,7 @@
   "name": "tmvc-syntax",
   "displayName": "TypeMVC Syntax",
   "description": "Syntax highlighting and language intelligence for TypeMVC .tmvc view files",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "typemvc",
   "license": "MIT",
   "homepage": "https://github.com/coretravis/typemvc#readme",

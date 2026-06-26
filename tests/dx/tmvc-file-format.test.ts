@@ -44,6 +44,16 @@ function describeValidationError(err: TmvcValidationError): string {
       return `class on line ${String(err.line)}: ${err.source}`;
     case 'invalid-model-directive':
       return `@model on line ${String(err.line)}: ${err.source}`;
+    case 'local-in-view':
+      return `@local in view on line ${String(err.line)}: ${err.source}`;
+    case 'local-import':
+      return `@local import on line ${String(err.line)}: ${err.source}`;
+    case 'local-export':
+      return `@local export on line ${String(err.line)}: ${err.source}`;
+    case 'local-async':
+      return `@local async on line ${String(err.line)}: ${err.source}`;
+    case 'local-fetch':
+      return `@local fetch on line ${String(err.line)}: ${err.source}`;
   }
 }
 

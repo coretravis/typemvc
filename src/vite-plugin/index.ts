@@ -35,6 +35,12 @@ const PREAMBLE_PROPS =
   'export default function render(props) {\n' +
   '  return html`';
 
+// Head of the generated module for a component that declares a @local block.
+const LOCAL_PREAMBLE_HEAD =
+  "import { html, _callComponent, signal, computed, effect, batch, onCleanup } from '@typemvc/core';\n" +
+  '\n' +
+  'export default function render(props) {\n';
+
 // Generated module suffix: closes template literal, function, then HMR accept
 const SUFFIX =
   '`;\n' +
@@ -101,29 +107,62 @@ function encodeVlq(value: number): string {
 // Source map generator
 // ---------------------------------------------------------------------------
 
-function generateSourceMap(source: string, id: string): string {
-  const sourceLines = source.split('\n');
-  const mappingParts: string[] = [];
+// One mapped generated line: its starting column maps to (srcLine, srcCol) in
+// the .tmvc source. A null entry is an unmapped generated line.
+interface LineSegment {
+  readonly genCol: number;
+  readonly srcLine: number;
+  readonly srcCol: number;
+}
 
-  // Five preamble lines (1-5) have no source mapping
+// Encodes one segment per generated line into a V3 mappings string.
+function buildMappingsString(lineMap: readonly (LineSegment | null)[]): string {
+  let prevSrcLine = 0;
+  let prevSrcCol = 0;
+  const parts: string[] = [];
+  for (const seg of lineMap) {
+    if (seg === null) {
+      parts.push('');
+      continue;
+    }
+    parts.push(
+      encodeVlq(seg.genCol) +
+        encodeVlq(0) +
+        encodeVlq(seg.srcLine - prevSrcLine) +
+        encodeVlq(seg.srcCol - prevSrcCol),
+    );
+    prevSrcLine = seg.srcLine;
+    prevSrcCol = seg.srcCol;
+  }
+  return parts.join(';');
+}
+
+function generateSourceMap(
+  source: string,
+  id: string,
+  block: { readonly startLine: number; readonly lineCount: number } | null,
+): string {
+  const sourceLineCount = source.split('\n').length;
+  const lineMap: (LineSegment | null)[] = [];
+
+  // Preamble lines (import, blank, function open) have no source mapping.
   for (let i = 0; i < PREAMBLE_LINE_COUNT; i++) {
-    mappingParts.push('');
+    lineMap.push(null);
   }
 
-  if (sourceLines.length > 0) {
-    // Line 6 of generated: .tmvc content starts at column TEMPLATE_START_COL
-    // Maps to source line 0 (0-indexed), column 0
-    mappingParts.push(
-      encodeVlq(TEMPLATE_START_COL) +
-        encodeVlq(0) +
-        encodeVlq(0) +
-        encodeVlq(0),
-    );
-    // Lines 7..N+5 each map to the next source line (delta +1 from previous)
-    for (let i = 1; i < sourceLines.length; i++) {
-      mappingParts.push(
-        encodeVlq(0) + encodeVlq(0) + encodeVlq(1) + encodeVlq(0),
-      );
+  // Lifted @local block lines map to the source lines they came from.
+  if (block !== null) {
+    for (let k = 0; k < block.lineCount; k++) {
+      lineMap.push({ genCol: 0, srcLine: block.startLine + k, srcCol: 0 });
+    }
+  }
+
+  // Markup maps one generated line per source line. The first markup line begins
+  // at the template column (after "  return html`"); the rest at column 0.
+  if (sourceLineCount > 0) {
+    lineMap.push({ genCol: TEMPLATE_START_COL, srcLine: 0, srcCol: 0 });
+    for (let i = 1; i < sourceLineCount; i++) {
+      lineMap.push({ genCol: 0, srcLine: i, srcCol: 0 });
     }
   }
 
@@ -133,7 +172,7 @@ function generateSourceMap(source: string, id: string): string {
     sources: [id],
     sourcesContent: [source],
     names: [],
-    mappings: mappingParts.join(';'),
+    mappings: buildMappingsString(lineMap),
   });
 }
 
@@ -210,16 +249,168 @@ export function extractDirective(source: string): {
 }
 
 // ---------------------------------------------------------------------------
+// @local block extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * A lifted `@local` block plus the markup with the block region removed.
+ * `statements` is the block body with the `@local` keyword and its braces blanked
+ * out, preserving the line count so source positions stay aligned. `markup` is
+ * the input body with the whole block region replaced by spaces.
+ */
+export interface LocalBlock {
+  readonly statements: string;
+  readonly markup: string;
+  /** Zero-based source line of the `@local` keyword. */
+  readonly startLine: number;
+  /** Number of source lines the block spans. */
+  readonly lineCount: number;
+}
+
+// Matches `@local` at the start of a line, allowing leading whitespace.
+const LOCAL_OPEN_RE = /(?:^|\n)[ \t]*@local\b/;
+
+/** True when the file id resolves under a components directory. */
+export function isComponentPath(id: string): boolean {
+  return id.replace(/\\/g, '/').includes('/components/');
+}
+
+// Returns the index of the `}` matching the `{` at openIndex, or -1 if none.
+// Braces inside strings, template literals, and comments are skipped.
+function findMatchingBrace(source: string, openIndex: number): number {
+  let depth = 0;
+  let i = openIndex;
+  const n = source.length;
+  while (i < n) {
+    const ch = source[i] ?? '';
+    if (ch === '/' && source[i + 1] === '/') {
+      i += 2;
+      while (i < n && source[i] !== '\n') i++;
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      i++;
+      while (i < n) {
+        const c = source[i] ?? '';
+        if (c === '\\') { i += 2; continue; }
+        if (c === quote) { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    if (ch === '{') { depth++; i++; continue; }
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) return i;
+      i++;
+      continue;
+    }
+    i++;
+  }
+  return -1;
+}
+
+function countNewlines(source: string, end: number): number {
+  let count = 0;
+  for (let i = 0; i < end; i++) {
+    if (source[i] === '\n') count++;
+  }
+  return count;
+}
+
+function lineStartOffset(source: string, index: number): number {
+  const nl = source.lastIndexOf('\n', index - 1);
+  return nl === -1 ? 0 : nl + 1;
+}
+
+function lineEndOffset(source: string, index: number): number {
+  const nl = source.indexOf('\n', index);
+  return nl === -1 ? source.length : nl;
+}
+
+function blankAt(source: string, pos: number, length: number): string {
+  return source.slice(0, pos) + ' '.repeat(length) + source.slice(pos + length);
+}
+
+// Replaces every character in [start, end) with a space, preserving newlines so
+// the line count and every later offset are unchanged.
+function blankRegion(source: string, start: number, end: number): string {
+  let out = source.slice(0, start);
+  for (let i = start; i < end; i++) {
+    out += source[i] === '\n' ? '\n' : ' ';
+  }
+  return out + source.slice(end);
+}
+
+/**
+ * Finds a `@local { ... }` block in a directive-stripped body and lifts it. The
+ * `@local` keyword and the braces are blanked so the inner statements sit at the
+ * function scope of the generated render function. Returns null when there is no
+ * well formed block.
+ */
+export function extractLocalBlock(body: string): LocalBlock | null {
+  const match = LOCAL_OPEN_RE.exec(body);
+  if (match === null) return null;
+
+  const atIndex = body.indexOf('@local', match.index);
+  if (atIndex === -1) return null;
+
+  // Only whitespace may sit between `@local` and the opening brace.
+  let i = atIndex + '@local'.length;
+  while (i < body.length && /\s/.test(body[i] ?? '')) i++;
+  if (body[i] !== '{') return null;
+
+  const openBrace = i;
+  const closeBrace = findMatchingBrace(body, openBrace);
+  if (closeBrace === -1) return null;
+
+  const startLine = countNewlines(body, atIndex);
+  const endLine = countNewlines(body, closeBrace);
+  const lineCount = endLine - startLine + 1;
+
+  const regionStart = lineStartOffset(body, atIndex);
+  const regionEnd = lineEndOffset(body, closeBrace);
+  let statements = body.slice(regionStart, regionEnd);
+  statements = blankAt(statements, atIndex - regionStart, '@local'.length);
+  statements = blankAt(statements, openBrace - regionStart, 1);
+  statements = blankAt(statements, closeBrace - regionStart, 1);
+
+  const markup = blankRegion(body, atIndex, closeBrace + 1);
+
+  return { statements, markup, startLine, lineCount };
+}
+
+// ---------------------------------------------------------------------------
 // Forbidden-pattern validator
 // ---------------------------------------------------------------------------
 
 /**
- * Validates .tmvc source for forbidden top-level constructs.
- * Returns a list of errors; an empty array means the source is valid.
+ * Validates .tmvc source for forbidden top-level constructs and, when an `id` is
+ * supplied, for `@local` block rules. Returns a list of errors; an empty array
+ * means the source is valid.
+ *
+ * @param source - The raw .tmvc source.
+ * @param id - The file id, used to enforce that `@local` is component only. When
+ *   omitted (the zero-build runtime parser), the component check is skipped but
+ *   the in-block denylist still applies.
  */
-export function validateTmvcSource(source: string): TmvcValidationError[] {
+export function validateTmvcSource(source: string, id?: string): TmvcValidationError[] {
   const normalized = source.replace(/\r\n/g, '\n');
   const errors: TmvcValidationError[] = [];
+
+  // Locate a @local block so its lines are validated against the denylist rather
+  // than the markup rules, and so it can be flagged when it appears in a view.
+  const localBlock = extractLocalBlock(normalized);
+  const blockFirstLine = localBlock !== null ? localBlock.startLine : -1;
+  const blockLastLine =
+    localBlock !== null ? localBlock.startLine + localBlock.lineCount - 1 : -1;
 
   // Parser state stack: tracks whether we are in markup, expression, or string
   const stack: StackEntry[] = [{ ctx: 'markup' }];
@@ -303,6 +494,8 @@ export function validateTmvcSource(source: string): TmvcValidationError[] {
   // index so any later @model line, or a duplicate, can be flagged.
   const firstNonBlankIdx = lines.findIndex((l) => l.trim() !== '');
   for (let i = 0; i < lines.length; i++) {
+    // Block lines are TypeScript, not markup; they are checked separately below.
+    if (i >= blockFirstLine && i <= blockLastLine) continue;
     if (!(lineStartsInMarkup[i] ?? true)) continue;
     const line = lines[i] ?? '';
     const lineNum = i + 1;
@@ -315,6 +508,33 @@ export function validateTmvcSource(source: string): TmvcValidationError[] {
       errors.push({ kind: 'class-definition', line: lineNum, source: line });
     } else if (/^\s*@(model|props)\b/.test(line) && i !== firstNonBlankIdx) {
       errors.push({ kind: 'invalid-model-directive', line: lineNum, source: line });
+    }
+  }
+
+  // @local block rules: components only, and a domain/IO denylist inside.
+  if (localBlock !== null) {
+    if (id !== undefined && !isComponentPath(id)) {
+      errors.push({
+        kind: 'local-in-view',
+        line: blockFirstLine + 1,
+        source: lines[blockFirstLine] ?? '',
+      });
+    }
+    for (let i = blockFirstLine; i <= blockLastLine; i++) {
+      const line = lines[i] ?? '';
+      const lineNum = i + 1;
+      if (/\bimport\b/.test(line)) {
+        errors.push({ kind: 'local-import', line: lineNum, source: line });
+      }
+      if (/\bexport\b/.test(line)) {
+        errors.push({ kind: 'local-export', line: lineNum, source: line });
+      }
+      if (/\b(?:async|await)\b/.test(line)) {
+        errors.push({ kind: 'local-async', line: lineNum, source: line });
+      }
+      if (/\bfetch\b/.test(line)) {
+        errors.push({ kind: 'local-fetch', line: lineNum, source: line });
+      }
     }
   }
 
@@ -928,11 +1148,27 @@ export function transformTmvc(
   // The @model/@props directive is a Volar-only type hint; strip it (whited out
   // in place so the source map stays byte-accurate) before generating runtime JS.
   const { body } = extractDirective(source);
-  const rewritten = rewriteComponentTags(body);
+  const isComponent = isComponentPath(id);
+
+  // A @local block lifts to component-scope statements; views never have one.
+  const localBlock = isComponent ? extractLocalBlock(body) : null;
+  const markupBody = localBlock !== null ? localBlock.markup : body;
+
+  const rewritten = rewriteComponentTags(markupBody);
   const escaped = escapeTmvcMarkup(rewritten);
-  const preamble = id.includes('/components/') ? PREAMBLE_PROPS : PREAMBLE_CONTEXT;
-  const code = preamble + escaped + SUFFIX;
-  const map = generateSourceMap(source, id);
+
+  let code: string;
+  if (localBlock !== null) {
+    code = LOCAL_PREAMBLE_HEAD + localBlock.statements + '\n  return html`' + escaped + SUFFIX;
+  } else {
+    const preamble = isComponent ? PREAMBLE_PROPS : PREAMBLE_CONTEXT;
+    code = preamble + escaped + SUFFIX;
+  }
+
+  const block = localBlock !== null
+    ? { startLine: localBlock.startLine, lineCount: localBlock.lineCount }
+    : null;
+  const map = generateSourceMap(source, id, block);
   return { code, map };
 }
 
@@ -950,6 +1186,16 @@ export function describeValidationError(err: TmvcValidationError): string {
       return 'class definitions are not permitted. Views are pure templates.';
     case 'invalid-model-directive':
       return 'the @model directive must be the first non-blank line of the view, and may appear only once.';
+    case 'local-in-view':
+      return 'the @local block is only allowed in component files. Move local state into a component, or move this logic to a controller.';
+    case 'local-import':
+      return 'import is not allowed in @local. A component declares no module dependencies; pass what you need as a prop.';
+    case 'local-export':
+      return 'export is not allowed in @local. The component default export is generated by the framework.';
+    case 'local-async':
+      return 'async and await are not allowed in @local. Move data loading to a controller and pass the result as a prop.';
+    case 'local-fetch':
+      return 'fetch is not allowed in @local. Move data loading to a controller and pass the result as a prop.';
   }
 }
 
@@ -972,7 +1218,7 @@ export function typemvcPlugin(): TmvcPlugin {
     ): TmvcTransformResult | null {
       if (!id.endsWith('.tmvc')) return null;
 
-      const errors = validateTmvcSource(source);
+      const errors = validateTmvcSource(source, id);
       if (errors.length > 0) {
         const first = errors[0];
         if (first === undefined) return null;

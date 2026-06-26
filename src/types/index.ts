@@ -347,4 +347,9 @@ export type TmvcValidationError =
   | { readonly kind: 'import-statement'; readonly line: number; readonly source: string }
   | { readonly kind: 'export-statement'; readonly line: number; readonly source: string }
   | { readonly kind: 'class-definition'; readonly line: number; readonly source: string }
-  | { readonly kind: 'invalid-model-directive'; readonly line: number; readonly source: string };
+  | { readonly kind: 'invalid-model-directive'; readonly line: number; readonly source: string }
+  | { readonly kind: 'local-in-view'; readonly line: number; readonly source: string }
+  | { readonly kind: 'local-import'; readonly line: number; readonly source: string }
+  | { readonly kind: 'local-export'; readonly line: number; readonly source: string }
+  | { readonly kind: 'local-async'; readonly line: number; readonly source: string }
+  | { readonly kind: 'local-fetch'; readonly line: number; readonly source: string };

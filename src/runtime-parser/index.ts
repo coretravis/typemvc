@@ -7,13 +7,21 @@ import {
   rewriteComponentTags,
   describeValidationError,
   extractDirective,
+  extractLocalBlock,
 } from '../vite-plugin/index.js';
 import { _callComponent } from '../core/component-registry.js';
+import { signal, computed, effect, batch, onCleanup } from '../reactivity/signal.js';
 
-// Internal alias for the typed raw function produced by new Function().
+// Internal alias for the typed raw function produced by new Function(). The
+// reactivity primitives are passed as parameters
 type RawViewFn = (
   h: typeof html,
   cc: typeof _callComponent,
+  s: typeof signal,
+  c: typeof computed,
+  e: typeof effect,
+  b: typeof batch,
+  oc: typeof onCleanup,
   ctx: ViewContext,
 ) => Fragment;
 
@@ -47,14 +55,28 @@ export function parseTmvc(source: string): TmvcViewFunction {
 
   // Strip the @model/@props directive (Volar-only type hint) before evaluating.
   const { body: directiveStripped } = extractDirective(source);
-  const rewritten = rewriteComponentTags(directiveStripped);
+  // Lift a @local block to function-scope statements
+  const localBlock = extractLocalBlock(directiveStripped);
+  const markupSource = localBlock !== null ? localBlock.markup : directiveStripped;
+  const rewritten = rewriteComponentTags(markupSource);
   const escaped = escapeTmvcMarkup(rewritten);
-  const body = 'return html`' + escaped + '`';
+  const statements = localBlock !== null ? localBlock.statements + '\n' : '';
+  const body = statements + 'return html`' + escaped + '`';
 
   let rawFn: RawViewFn;
   try {
     // eslint-disable-next-line @typescript-eslint/no-implied-eval -- new Function() is the zero-build runtime evaluation path required by SRS §14
-    const unsafeRaw: unknown = new Function('html', '_callComponent', 'context', body);
+    const unsafeRaw: unknown = new Function(
+      'html',
+      '_callComponent',
+      'signal',
+      'computed',
+      'effect',
+      'batch',
+      'onCleanup',
+      'context',
+      body,
+    );
     rawFn = unsafeRaw as RawViewFn;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -68,5 +90,6 @@ export function parseTmvc(source: string): TmvcViewFunction {
     );
   }
 
-  return (context: ViewContext): Fragment => rawFn(html, _callComponent, context);
+  return (context: ViewContext): Fragment =>
+    rawFn(html, _callComponent, signal, computed, effect, batch, onCleanup, context);
 }

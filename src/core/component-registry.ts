@@ -1,5 +1,6 @@
 import type { ComponentFunction } from '../types/index.js';
 import { Fragment } from '../renderer/fragment.js';
+import { _withOwner } from '../reactivity/signal.js';
 
 declare const __DEV__: boolean;
 
@@ -26,5 +27,9 @@ export function _callComponent(name: string, props: Record<string, unknown>): Fr
     }
     return new Fragment([]);
   }
-  return fn(props);
+  const { value: fragment, disposes } = _withOwner(() => fn(props));
+  for (const dispose of disposes) {
+    fragment.addDispose(dispose);
+  }
+  return fragment;
 }

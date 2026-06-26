@@ -27,6 +27,35 @@ interface ComputedNode {
 
 let currentEffect: Subscriber | null = null;
 
+// ---------------------------------------------------------------------------
+// Owner scope
+// ---------------------------------------------------------------------------
+
+declare const __DEV__: boolean;
+
+interface Owner {
+  readonly disposes: (() => void)[];
+}
+
+let currentOwner: Owner | null = null;
+
+/**
+ * Framework-internal: runs `fn` with a fresh owner scope active and returns its
+ * result together with every effect dispose and onCleanup callback registered
+ * during the call.
+ */
+export function _withOwner<T>(fn: () => T): { value: T; disposes: (() => void)[] } {
+  const owner: Owner = { disposes: [] };
+  const prev = currentOwner;
+  currentOwner = owner;
+  try {
+    const value = fn();
+    return { value, disposes: owner.disposes };
+  } finally {
+    currentOwner = prev;
+  }
+}
+
 function trackAccess(subscribers: Set<Subscriber>): void {
   if (currentEffect !== null) {
     subscribers.add(currentEffect);
@@ -141,9 +170,8 @@ export function effect(fn: EffectCallback): () => void {
     },
   };
 
-  node.run();
-
-  return (): void => {
+  const dispose = (): void => {
+    if (node.disposed) return;
     node.disposed = true;
     clearDeps(node);
     if (node.cleanup !== undefined) {
@@ -151,6 +179,46 @@ export function effect(fn: EffectCallback): () => void {
       node.cleanup = undefined;
     }
   };
+
+  // Tie this effect to the active owner scope (a component render) so it is
+  // disposed with the component's Fragment.
+  if (currentOwner !== null) {
+    currentOwner.disposes.push(dispose);
+  }
+
+  node.run();
+
+  return dispose;
+}
+
+/**
+ * Registers a teardown callback on the active owner scope (a component render).
+ * The callback runs when the component's Fragment is disposed, in reverse
+ * registration order so later resources tear down before earlier ones. Called
+ * outside a component render it is a no-op, and emits a DEV warning, because
+ * there is no owner to attach the callback to.
+ *
+ * @param fn - The teardown callback; may be async (awaited fire-and-forget).
+ * @example
+ * ```ts
+ * const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') close(); };
+ * document.addEventListener('keydown', onKey);
+ * onCleanup(() => document.removeEventListener('keydown', onKey));
+ * ```
+ */
+export function onCleanup(fn: () => void | Promise<void>): void {
+  if (currentOwner === null) {
+    if (__DEV__) {
+      console.warn(
+        '[TypeMVC] onCleanup() called outside a component render. The callback will not run. ' +
+          "Call it inside a component's @local block or render body.",
+      );
+    }
+    return;
+  }
+  currentOwner.disposes.push(() => {
+    void fn();
+  });
 }
 
 /**

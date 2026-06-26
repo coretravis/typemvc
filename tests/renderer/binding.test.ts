@@ -725,3 +725,43 @@ describe('form control property binding: selected', () => {
     expect(optB.selected).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Static child Fragment disposal propagation
+// ---------------------------------------------------------------------------
+
+describe('static child Fragment disposal', () => {
+  it('disposes a statically interpolated Fragment when the parent is disposed (AC1)', () => {
+    const s = signal(0);
+    const child = html`<span>${s}</span>`;
+    const span = child.nodes[0] as HTMLElement;
+    const parent = html`<div>${child}</div>`;
+
+    expect(span.textContent).toBe('0');
+    s.set(1);
+    flush();
+    expect(span.textContent).toBe('1');
+
+    parent.dispose();
+    s.set(2);
+    flush();
+    expect(span.textContent).toBe('1');
+  });
+
+  it('disposes each item Fragment in a static array when the parent is disposed (AC4)', () => {
+    const s = signal(0);
+    const items = [html`<li>${s}</li>`, html`<li>static</li>`];
+    const li0 = items[0]?.nodes[0] as HTMLElement;
+    const parent = html`<ul>${items}</ul>`;
+
+    expect(li0.textContent).toBe('0');
+    s.set(1);
+    flush();
+    expect(li0.textContent).toBe('1');
+
+    parent.dispose();
+    s.set(2);
+    flush();
+    expect(li0.textContent).toBe('1');
+  });
+});

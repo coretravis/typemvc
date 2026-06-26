@@ -450,7 +450,7 @@ describe('keyed() helper (AC2)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Fragment disposal on removal and replace (issue 054)
+// Fragment disposal on removal and replace
 // ---------------------------------------------------------------------------
 
 describe('reconcile -- disposes removed item fragments (AC1)', () => {

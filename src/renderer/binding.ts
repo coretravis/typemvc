@@ -196,6 +196,11 @@ export function renderValue(
   if (value instanceof Fragment) {
     if (ctx.kind === 'node') {
       insertFragment(ctx.comment, value);
+      // Adopt the child's dispose chain so its binding effects tear down when the parent
+      // Fragment is disposed.
+      collector.addDispose(() => {
+        value.dispose();
+      });
     }
     return;
   }
@@ -230,6 +235,10 @@ export function renderValue(
           for (const node of item.nodes) {
             parent.insertBefore(node, comment);
           }
+          // Adopt each item Fragment's dispose chain so a static array of fragments does not leak effects.
+          collector.addDispose(() => {
+            item.dispose();
+          });
         } else if (
           item !== null &&
           item !== undefined &&

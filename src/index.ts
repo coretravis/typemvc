@@ -25,7 +25,7 @@ export { View, PartialView, Redirect, RedirectReplace, EmptyView } from './core/
 export { ContextData } from './core/context-data.js';
 
 // Reactivity
-export { signal, effect, computed, batch } from './reactivity/signal.js';
+export { signal, effect, computed, batch, onCleanup } from './reactivity/signal.js';
 export { reactive } from './reactivity/reactive.js';
 
 // Template renderer

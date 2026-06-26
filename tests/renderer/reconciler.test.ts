@@ -4,6 +4,7 @@ import { signal } from '../../src/reactivity/signal.js';
 import { flush } from '../../src/reactivity/scheduler.js';
 import { html } from '../../src/renderer/html.js';
 import { keyed } from '../../src/renderer/keyed.js';
+import type { KeyedFragment } from '../../src/renderer/keyed.js';
 import { clearRegion, reconcile } from '../../src/renderer/reconciler.js';
 
 // ---------------------------------------------------------------------------
@@ -80,7 +81,7 @@ describe('clearRegion', () => {
 describe('reconcile -- initial insertion', () => {
   it('inserts all items into an empty region (AC3)', () => {
     const { end } = makeRegion();
-    const oldMap = new Map<string | number, readonly Node[]>();
+    const oldMap = new Map<string | number, KeyedFragment>();
 
     reconcile(end, oldMap, [
       keyed('a', html`<li>A</li>`),
@@ -436,8 +437,125 @@ describe('keyed() helper (AC2)', () => {
     expect(kf.nodes).toBe(frag.nodes);
   });
 
+  it('retains the source fragment for disposal', () => {
+    const frag = html`<li>x</li>`;
+    const kf = keyed('k', frag);
+    expect(kf.fragment).toBe(frag);
+  });
+
   it('is exported from the public barrel', async () => {
     const barrel = await import('../../src/index.js');
     expect(typeof barrel.keyed).toBe('function');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fragment disposal on removal and replace (issue 054)
+// ---------------------------------------------------------------------------
+
+describe('reconcile -- disposes removed item fragments (AC1)', () => {
+  it('disposes a removed item so its binding effects stop running', () => {
+    const count = signal(0);
+    const itemA = html`<li class="a">${count}</li>`;
+    const liA = itemA.nodes[0] as HTMLElement;
+
+    const { end } = makeRegion();
+    let map = reconcile(end, new Map(), [keyed('a', itemA), keyed('b', html`<li>B</li>`)]);
+    expect(liA.textContent).toBe('0');
+
+    // Remove 'a'. Its fragment is disposed, so its text-binding effect stops.
+    map = reconcile(end, map, [keyed('b', html`<li>B</li>`)]);
+    count.set(99);
+    flush();
+
+    expect(liA.textContent).toBe('0');
+    expect(map.has('a')).toBe(false);
+  });
+
+  it('does not dispose a reordered (retained) item (AC2)', () => {
+    const count = signal(0);
+    const itemA = html`<li class="a">${count}</li>`;
+    const liA = itemA.nodes[0] as HTMLElement;
+
+    const { end } = makeRegion();
+    let map = reconcile(end, new Map(), [keyed('a', itemA), keyed('b', html`<li>B</li>`)]);
+    expect(liA.textContent).toBe('0');
+
+    // Reorder: 'a' is retained, so its live binding keeps updating.
+    map = reconcile(end, map, [keyed('b', html`<li>B</li>`), keyed('a', html`<li class="a">${count}</li>`)]);
+    count.set(7);
+    flush();
+
+    expect(liA.textContent).toBe('7');
+    expect(map.get('a')?.nodes[0]).toBe(liA);
+  });
+});
+
+describe('Signal<Fragment> binding -- disposes outgoing fragment (AC3, AC4)', () => {
+  it('disposes the previous fragment when the signal is replaced (AC3)', () => {
+    const count = signal(0);
+    const f1 = html`<p>${count}</p>`;
+    const p1 = f1.nodes[0] as HTMLElement;
+    const s = signal<ReturnType<typeof html>>(f1);
+    const frag = html`<div>${s}</div>`;
+    expect((frag.nodes[0] as HTMLElement).contains(p1)).toBe(true);
+    expect(p1.textContent).toBe('0');
+
+    s.set(html`<p>second</p>`);
+    flush();
+
+    // f1 was disposed: its text-binding effect no longer responds to count.
+    count.set(42);
+    flush();
+    expect(p1.textContent).toBe('0');
+  });
+
+  it('keeps the fragment live when set to the same instance (AC4)', () => {
+    const count = signal(0);
+    const f = html`<p>${count}</p>`;
+    const p = f.nodes[0] as HTMLElement;
+    const s = signal<ReturnType<typeof html>>(f);
+    const frag = html`<div>${s}</div>`;
+    const div = frag.nodes[0] as HTMLElement;
+
+    s.set(f);
+    flush();
+    count.set(5);
+    flush();
+
+    expect(p.textContent).toBe('5');
+    expect(div.contains(p)).toBe(true);
+  });
+});
+
+describe('Fragment disposal on region teardown (AC5)', () => {
+  it('disposes keyed items still mounted when the parent Fragment is disposed', () => {
+    const count = signal(0);
+    const itemA = html`<li>${count}</li>`;
+    const liA = itemA.nodes[0] as HTMLElement;
+    const s = signal([keyed('a', itemA)]);
+    const frag = html`<ul>${s}</ul>`;
+    expect(liA.textContent).toBe('0');
+
+    frag.dispose();
+    count.set(3);
+    flush();
+
+    expect(liA.textContent).toBe('0');
+  });
+
+  it('disposes the mounted Signal<Fragment> value when the parent Fragment is disposed', () => {
+    const count = signal(0);
+    const inner = html`<p>${count}</p>`;
+    const p = inner.nodes[0] as HTMLElement;
+    const s = signal<ReturnType<typeof html>>(inner);
+    const frag = html`<div>${s}</div>`;
+    expect(p.textContent).toBe('0');
+
+    frag.dispose();
+    count.set(8);
+    flush();
+
+    expect(p.textContent).toBe('0');
   });
 });

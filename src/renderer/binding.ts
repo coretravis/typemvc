@@ -119,16 +119,30 @@ export function renderValue(
         parent.insertBefore(startSentinel, comment);
         parent.insertBefore(endSentinel, comment);
         parent.removeChild(comment);
+        let mounted: Fragment | null = null;
         const dispose = effect(() => {
           const v = value.get();
+          // Same fragment instance: nothing to replace.
+          if (v === mounted) return;
+          // Dispose the outgoing fragment's binding effects before swapping.
+          if (mounted !== null) mounted.dispose();
           clearRegion(startSentinel, endSentinel);
           if (v instanceof Fragment) {
             for (const node of v.nodes) {
               parent.insertBefore(node, endSentinel);
             }
+            mounted = v;
+          } else {
+            mounted = null;
           }
         });
-        collector.addDispose(dispose);
+        collector.addDispose(() => {
+          dispose();
+          if (mounted !== null) {
+            mounted.dispose();
+            mounted = null;
+          }
+        });
       } else if (Array.isArray(initialValue)) {
         // Signal<KeyedFragment[]> -- keyed reconciler
         const startSentinel = document.createComment('tmvc-rc-start');
@@ -136,7 +150,7 @@ export function renderValue(
         parent.insertBefore(startSentinel, comment);
         parent.insertBefore(endSentinel, comment);
         parent.removeChild(comment);
-        let keyMap = new Map<string | number, readonly Node[]>();
+        let keyMap = new Map<string | number, KeyedFragment>();
         const dispose = effect(() => {
           const v = value.get();
           if (Array.isArray(v)) {
@@ -144,7 +158,14 @@ export function renderValue(
             keyMap = reconcile(endSentinel, keyMap, items);
           }
         });
-        collector.addDispose(dispose);
+        collector.addDispose(() => {
+          dispose();
+          // Dispose any items still mounted so their binding effects do not leak.
+          for (const [, entry] of keyMap) {
+            entry.fragment.dispose();
+          }
+          keyMap.clear();
+        });
       } else {
         // Signal<scalar> -- reactive text node
         const textNode = document.createTextNode('');

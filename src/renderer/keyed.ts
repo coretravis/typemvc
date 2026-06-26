@@ -8,6 +8,7 @@ import type { Fragment } from './fragment.js';
 export interface KeyedFragment {
   readonly key: string | number;
   readonly nodes: readonly Node[];
+  readonly fragment: Fragment;
 }
 
 /**
@@ -20,7 +21,7 @@ export interface KeyedFragment {
  * @returns A {@link KeyedFragment} for use in a signal-bound list.
  */
 export function keyed(key: string | number, fragment: Fragment): KeyedFragment {
-  return { key, nodes: fragment.nodes };
+  return { key, nodes: fragment.nodes, fragment };
 }
 
 export function isKeyedFragment(value: unknown): value is KeyedFragment {

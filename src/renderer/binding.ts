@@ -5,6 +5,7 @@ import { SafeHtml } from './safe-html.js';
 import { sanitizeUrl, BOOLEAN_ATTRS, isUrlAttribute } from './escape.js';
 import { isKeyedFragment } from './keyed.js';
 import type { KeyedFragment } from './keyed.js';
+import type { AttrPart } from './template.js';
 import { clearRegion, reconcile } from './reconciler.js';
 
 // ---------------------------------------------------------------------------
@@ -91,6 +92,56 @@ function applyAttrValue(element: Element, attrName: string, value: unknown): voi
   // signals after user interaction (setAttribute only updates defaultValue).
   if (attrName === 'value' && 'value' in element) {
     (element as HTMLInputElement).value = str;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-part attribute binding (literal text plus one or more holes)
+// ---------------------------------------------------------------------------
+
+function partToString(value: unknown): string {
+  const resolved = isReadonlySignal(value) ? value.get() : value;
+  if (resolved === null || resolved === undefined || resolved === false) return '';
+  if (typeof resolved === 'string' || typeof resolved === 'number' || typeof resolved === 'boolean') {
+    return String(resolved);
+  }
+  return '';
+}
+
+/**
+ * Binds an attribute whose value is composed of literal text and one or more
+ * interpolation holes (for example `href="/books/${id}"` or `class="${a} ${b}"`).
+ * The full value is recomposed and applied through {@link applyAttrValue}, so
+ * boolean handling and URL sanitization run on the final string. When any hole
+ * is a signal, the recompose runs inside a disposed-on-unmount effect.
+ */
+export function renderAttrParts(
+  element: Element,
+  attrName: string,
+  parts: readonly AttrPart[],
+  values: readonly unknown[],
+  collector: DisposeCollector,
+): void {
+  const hasSignal = parts.some(
+    (part) => part.kind === 'hole' && isReadonlySignal(values[part.index]),
+  );
+
+  const compose = (): string => {
+    let out = '';
+    for (const part of parts) {
+      out += part.kind === 'literal' ? part.text : partToString(values[part.index]);
+    }
+    return out;
+  };
+
+  element.removeAttribute(attrName);
+  if (hasSignal) {
+    const dispose = effect(() => {
+      applyAttrValue(element, attrName, compose());
+    });
+    collector.addDispose(dispose);
+  } else {
+    applyAttrValue(element, attrName, compose());
   }
 }
 

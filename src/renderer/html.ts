@@ -1,7 +1,8 @@
 import { Fragment } from './fragment.js';
 import type { DisposeCollector } from './binding.js';
-import { renderValue } from './binding.js';
-import { getOrParseTemplate, parseSentinelIndex, parseAttrSentinelIndex } from './template.js';
+import { renderValue, renderAttrParts } from './binding.js';
+import { getOrParseTemplate, parseSentinelIndex, splitAttrValue } from './template.js';
+import type { AttrPart } from './template.js';
 
 /**
  * Tagged template literal that compiles HTML markup with interpolated values
@@ -22,7 +23,7 @@ export function html(strings: TemplateStringsArray, ...values: unknown[]): Fragm
 
   // Collect all binding sites BEFORE mutating the DOM so walker state is stable.
   const nodeBindings: { comment: Comment; index: number }[] = [];
-  const attrBindings: { element: Element; attrName: string; index: number }[] = [];
+  const attrBindings: { element: Element; attrName: string; parts: AttrPart[] }[] = [];
 
   const commentWalker = document.createTreeWalker(clone, NodeFilter.SHOW_COMMENT);
   let node = commentWalker.nextNode();
@@ -43,9 +44,9 @@ export function html(strings: TemplateStringsArray, ...values: unknown[]): Fragm
     for (let j = 0; j < attrCount; j++) {
       const attr = element.attributes[j];
       if (attr === undefined) continue;
-      const index = parseAttrSentinelIndex(attr.value);
-      if (index !== null && index < values.length) {
-        attrBindings.push({ element, attrName: attr.name, index });
+      const parts = splitAttrValue(attr.value);
+      if (parts !== null) {
+        attrBindings.push({ element, attrName: attr.name, parts });
       }
     }
     el = elementWalker.nextNode();
@@ -63,12 +64,26 @@ export function html(strings: TemplateStringsArray, ...values: unknown[]): Fragm
     renderValue(values[index], { kind: 'node', comment }, collector);
   }
 
-  for (const { element, attrName, index } of attrBindings) {
+  for (const { element, attrName, parts } of attrBindings) {
+    const soleHole = parts.length === 1 && parts[0]?.kind === 'hole' ? parts[0] : null;
+
     if (attrName.startsWith('on')) {
+      // Event handlers must be a single whole-value expression: a function
+      // cannot be concatenated with literal text.
+      if (soleHole === null) {
+        throw new Error(
+          `[TypeMVC] Event handler attribute "${attrName}" must be a single \${...} ` +
+            'expression, not combined with literal text or other expressions.',
+        );
+      }
       const eventName = attrName.slice(2);
-      renderValue(values[index], { kind: 'event', element, attrName, eventName }, collector);
+      renderValue(values[soleHole.index], { kind: 'event', element, attrName, eventName }, collector);
+    } else if (soleHole !== null) {
+      // Whole-value attribute: keep the existing single-value path so reactive
+      // values and form control property assignment behave as before.
+      renderValue(values[soleHole.index], { kind: 'attr', element, attrName }, collector);
     } else {
-      renderValue(values[index], { kind: 'attr', element, attrName }, collector);
+      renderAttrParts(element, attrName, parts, values, collector);
     }
   }
 

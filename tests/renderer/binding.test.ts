@@ -765,3 +765,74 @@ describe('static child Fragment disposal', () => {
     expect(li0.textContent).toBe('1');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Composed attribute values (issue 059)
+// ---------------------------------------------------------------------------
+
+describe('composed attribute values', () => {
+  it('composes a literal prefix with a hole and leaks no marker (AC1)', () => {
+    const frag = html`<a href="/books/${'123'}">x</a>`;
+    const a = frag.nodes[0] as HTMLAnchorElement;
+    expect(a.getAttribute('href')).toBe('/books/123');
+    expect(a.getAttribute('href')).not.toContain('<!--');
+    expect(a.getAttribute('href')).not.toContain('__tmvc');
+  });
+
+  it('composes a class prefix with a hole (AC2)', () => {
+    const frag = html`<div class="card ${'active'}"></div>`;
+    const div = frag.nodes[0] as HTMLElement;
+    expect(div.getAttribute('class')).toBe('card active');
+  });
+
+  it('composes a prefix and a suffix around a hole (AC3)', () => {
+    const frag = html`<div data-label="width: ${10}px"></div>`;
+    const div = frag.nodes[0] as HTMLElement;
+    expect(div.getAttribute('data-label')).toBe('width: 10px');
+  });
+
+  it('composes multiple holes in order (AC4)', () => {
+    const frag = html`<div class="${'a'} ${'b'}"></div>`;
+    const div = frag.nodes[0] as HTMLElement;
+    expect(div.getAttribute('class')).toBe('a b');
+  });
+
+  it('updates a composed value when a signal hole changes and stops after dispose (AC5)', () => {
+    const cls = signal('one');
+    const frag = html`<div class="box ${cls}"></div>`;
+    const div = frag.nodes[0] as HTMLElement;
+    expect(div.getAttribute('class')).toBe('box one');
+
+    cls.set('two');
+    flush();
+    expect(div.getAttribute('class')).toBe('box two');
+
+    frag.dispose();
+    cls.set('three');
+    flush();
+    expect(div.getAttribute('class')).toBe('box two');
+  });
+
+  it('sanitizes the composed value for a URL attribute (AC6)', () => {
+    const frag = html`<a href="javascript:${'alert(1)'}">x</a>`;
+    const a = frag.nodes[0] as HTMLAnchorElement;
+    expect(a.getAttribute('href')).toBe('#');
+  });
+
+  it('keeps whole-value attribute bindings working (AC7)', () => {
+    const frag = html`<a href="${'/about'}">x</a>`;
+    const a = frag.nodes[0] as HTMLAnchorElement;
+    expect(a.getAttribute('href')).toBe('/about');
+  });
+
+  it('throws for an event attribute combined with literal text (AC9)', () => {
+    const handler = (): void => undefined;
+    expect(() => html`<button onclick="run ${handler}">x</button>`).toThrow('[TypeMVC]');
+  });
+
+  it('throws for an event attribute with more than one expression (AC9)', () => {
+    const a = (): void => undefined;
+    const b = (): void => undefined;
+    expect(() => html`<button onclick="${a}${b}">x</button>`).toThrow('[TypeMVC]');
+  });
+});

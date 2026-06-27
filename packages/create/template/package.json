@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@typemvc/core": "^0.1.0"
+    "@typemvc/core": "^0.2.0"
   },
   "devDependencies": {
     "typescript": "latest",

@@ -1,6 +1,6 @@
 {
   "name": "@typemvc/core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A client-side MVC framework for TypeScript: controllers, typed views, signals reactivity, and DI. No JSX, no virtual DOM, no SSR.",
   "type": "module",
   "license": "MIT",

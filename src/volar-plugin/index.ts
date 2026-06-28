@@ -423,12 +423,14 @@ export function findComponentByName(
 interface UsageProp {
   /** Generated JS for the value, e.g. '(context.model.total)', '"items"', 'true'. */
   readonly valueJs: string;
-  /** Prop name. */
+  /** Prop name. Empty for a spread. */
   readonly name: string;
   /** Source offset of the inner expression (expr props only) for equal-length mapping. */
   readonly exprSourceOffset: number;
   /** Length of the inner expression text (0 when not an expr prop). */
   readonly exprLength: number;
+  /** True for a `...${obj}` spread; emitted as `...(obj)` in the prop check. */
+  readonly isSpread: boolean;
 }
 
 /** A component tag usage found in markup. */
@@ -464,6 +466,27 @@ function scanExprSpan(
     }
     if (ch === '{') { depth++; i++; continue; }
     if (ch === '}') { depth--; if (depth === 0) return { inner: source.slice(start, i), innerStart: start, end: i + 1 }; i++; continue; }
+    i++;
+  }
+  return null;
+}
+
+// Scans a template literal starting at `start` (just after the opening backtick);
+// returns its inner content and the index past the closing backtick. Nested
+// ${...} interpolations (which may contain their own backticks) are skipped.
+function scanTemplateSpan(source: string, start: number): { inner: string; end: number } | null {
+  const n = source.length;
+  let i = start;
+  while (i < n) {
+    const ch = source[i] ?? '';
+    if (ch === '\\') { i += 2; continue; }
+    if (ch === '`') return { inner: source.slice(start, i), end: i + 1 };
+    if (ch === '$' && (source[i + 1] ?? '') === '{') {
+      const span = scanExprSpan(source, i + 2);
+      if (span === null) return null;
+      i = span.end;
+      continue;
+    }
     i++;
   }
   return null;
@@ -506,6 +529,67 @@ export function scanComponentUsages(source: string): ComponentUsage[] {
   return usages;
 }
 
+// Collects every component tag name used anywhere in the source, including tags
+// nested inside ${...} expressions and nested html`` template literals. Used to
+// resolve and import components so loop usages are checked too (issue 060).
+export function collectComponentNames(source: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  function scanMarkup(text: string): void {
+    const n = text.length;
+    let i = 0;
+    while (i < n) {
+      const ch = text[i] ?? '';
+      if (ch === '$' && (text[i + 1] ?? '') === '{') {
+        const span = scanExprSpan(text, i + 2);
+        if (span === null) break;
+        scanExpr(span.inner);
+        i = span.end;
+        continue;
+      }
+      if (ch === '<' && /[A-Z]/u.test(text[i + 1] ?? '')) {
+        const parsed = scanOneUsage(text, i);
+        if (parsed !== null) {
+          if (!seen.has(parsed.usage.name)) {
+            seen.add(parsed.usage.name);
+            names.push(parsed.usage.name);
+          }
+          i = parsed.end;
+          continue;
+        }
+      }
+      i++;
+    }
+  }
+
+  function scanExpr(text: string): void {
+    const n = text.length;
+    let i = 0;
+    while (i < n) {
+      const ch = text[i] ?? '';
+      if (ch === '\\') { i += 2; continue; }
+      if (ch === '"' || ch === "'") {
+        const q = ch;
+        i++;
+        while (i < n) { const c = text[i] ?? ''; if (c === '\\') { i += 2; continue; } i++; if (c === q) break; }
+        continue;
+      }
+      if (ch === '`') {
+        const span = scanTemplateSpan(text, i + 1);
+        if (span === null) break;
+        scanMarkup(span.inner);
+        i = span.end;
+        continue;
+      }
+      i++;
+    }
+  }
+
+  scanMarkup(source);
+  return names;
+}
+
 // Parses a single component tag at `start` (pointing at '<') into a structured
 // usage. Returns null if it is not a parseable component tag.
 function scanOneUsage(
@@ -536,13 +620,31 @@ function scanOneUsage(
       return { usage: { name, nameOffset, props, hasChildren }, end: scanned.end };
     }
 
+    // Spread props: <Comp ...${obj} />
+    if (ch === '.' && (source[i + 1] ?? '') === '.' && (source[i + 2] ?? '') === '.') {
+      let j = i + 3;
+      while (j < n && /\s/u.test(source[j] ?? '')) j++;
+      if ((source[j] ?? '') !== '$' || (source[j + 1] ?? '') !== '{') return null;
+      const span = scanExprSpan(source, j + 2);
+      if (span === null) return null;
+      props.push({
+        name: '',
+        valueJs: `(${span.inner})`,
+        exprSourceOffset: span.innerStart,
+        exprLength: span.inner.length,
+        isSpread: true,
+      });
+      i = span.end;
+      continue;
+    }
+
     if (!/[a-zA-Z_]/u.test(ch)) return null;
     let attrName = '';
     while (i < n && /[a-zA-Z0-9_-]/u.test(source[i] ?? '')) { attrName += source[i] ?? ''; i++; }
     while (i < n && /[ \t]/u.test(source[i] ?? '')) i++;
 
     if ((source[i] ?? '') !== '=') {
-      props.push({ name: attrName, valueJs: 'true', exprSourceOffset: 0, exprLength: 0 });
+      props.push({ name: attrName, valueJs: 'true', exprSourceOffset: 0, exprLength: 0, isSpread: false });
       continue;
     }
     i++; // '='
@@ -561,6 +663,7 @@ function scanOneUsage(
           valueJs: `(${span.inner})`,
           exprSourceOffset: span.innerStart,
           exprLength: span.inner.length,
+          isSpread: false,
         });
         i = span.end + 1;
         continue;
@@ -582,6 +685,7 @@ function scanOneUsage(
       valueJs: isStatic ? JSON.stringify(raw) : `\`${raw.replace(/`/gu, '\\`')}\``,
       exprSourceOffset: 0,
       exprLength: 0,
+      isSpread: false,
     });
   }
 
@@ -676,6 +780,13 @@ function buildCheckBlock(usages: readonly ComponentUsage[]): {
     for (const p of u.props) {
       if (!first) text += ', ';
       first = false;
+      if (p.isSpread) {
+        const inner = p.valueJs.slice(1, -1); // strip the wrapping parens
+        text += '...(';
+        exprs.push({ genRel: text.length, srcOffset: p.exprSourceOffset, len: p.exprLength });
+        text += inner + ')';
+        continue;
+      }
       text += `${p.name}: `;
       if (p.exprLength > 0) {
         const inner = p.valueJs.slice(1, -1); // strip the wrapping parens
@@ -740,6 +851,194 @@ function buildControllerPreamble(
     'export default function render(context: TypedViewContext<__TmvcData>): Fragment {\n' +
     '  return html`'
   );
+}
+
+// ---------------------------------------------------------------------------
+// Loop call-site checking (issue 060)
+//
+// A component used inside ${...} (the natural `.map()` loop) is not checked by
+// the flat top-level block, because its props reference loop variables that only
+// exist inside the callback. To check it in the right scope, the enclosing
+// expression is reproduced with each nested component tag rewritten to a typed
+// __Cmp_Name({...}) call, placed in the non-executed `if (false)` block. The
+// reproduced expression keeps the real `.map((x) => ...)`, so `x` keeps its
+// inferred element type. Anything ambiguous returns null so the caller skips it.
+// ---------------------------------------------------------------------------
+
+interface RepMapping {
+  genRel: number;
+  srcOffset: number;
+  len: number;
+}
+
+type RepFrame = { kind: 'tmpl' } | { kind: 'expr'; depth: number; root: boolean };
+
+interface ReproducedExpr {
+  readonly text: string;
+  readonly exprs: RepMapping[];
+  readonly names: string[];
+  readonly usedCount: number;
+}
+
+// Appends the typed call __Cmp_Name({...}) for one usage to `out`, recording
+// equal-length mappings (base-relative). Returns the new `out`.
+function emitTypedCall(
+  out: string,
+  usage: ComponentUsage,
+  base: number,
+  exprs: RepMapping[],
+): string {
+  let text = out + '${__Cmp_';
+  exprs.push({ genRel: text.length, srcOffset: base + usage.nameOffset, len: usage.name.length });
+  text += usage.name + '({ ';
+  let first = true;
+  for (const p of usage.props) {
+    if (!first) text += ', ';
+    first = false;
+    if (p.isSpread) {
+      text += '...(';
+      exprs.push({ genRel: text.length, srcOffset: base + p.exprSourceOffset, len: p.exprLength });
+      text += p.valueJs.slice(1, -1) + ')';
+      continue;
+    }
+    text += `${p.name}: `;
+    if (p.exprLength > 0) {
+      text += '(';
+      exprs.push({ genRel: text.length, srcOffset: base + p.exprSourceOffset, len: p.exprLength });
+      text += p.valueJs.slice(1, -1) + ')';
+    } else {
+      text += p.valueJs;
+    }
+  }
+  if (usage.hasChildren) {
+    if (!first) text += ', ';
+    text += 'children: (undefined as unknown as Fragment)';
+  }
+  text += ' })}';
+  return text;
+}
+
+function reproduceExpr(
+  expr: string,
+  base: number,
+  importable: ReadonlySet<string>,
+): ReproducedExpr | null {
+  const exprs: RepMapping[] = [];
+  const names: string[] = [];
+  let usedCount = 0;
+  let out = '';
+  const stack: RepFrame[] = [{ kind: 'expr', depth: 0, root: true }];
+  const n = expr.length;
+  let i = 0;
+
+  while (i < n) {
+    const frame = stack[stack.length - 1];
+    if (frame === undefined) return null;
+    const ch = expr[i] ?? '';
+
+    if (frame.kind === 'expr') {
+      if (ch === '\\') { out += ch + (expr[i + 1] ?? ''); i += 2; continue; }
+      if (ch === '"' || ch === "'") {
+        out += ch;
+        i++;
+        while (i < n) {
+          const c = expr[i] ?? '';
+          if (c === '\\') { out += c + (expr[i + 1] ?? ''); i += 2; continue; }
+          out += c;
+          i++;
+          if (c === ch) break;
+        }
+        continue;
+      }
+      if (ch === '`') { stack.push({ kind: 'tmpl' }); out += ch; i++; continue; }
+      if (ch === '{') { frame.depth++; out += ch; i++; continue; }
+      if (ch === '}') {
+        if (frame.depth > 0) frame.depth--;
+        else if (!frame.root) stack.pop();
+        out += ch;
+        i++;
+        continue;
+      }
+      out += ch;
+      i++;
+      continue;
+    }
+
+    // template literal context
+    if (ch === '\\') { out += ch + (expr[i + 1] ?? ''); i += 2; continue; }
+    if (ch === '`') { stack.pop(); out += ch; i++; continue; }
+    if (ch === '$' && (expr[i + 1] ?? '') === '{') {
+      stack.push({ kind: 'expr', depth: 0, root: false });
+      out += '${';
+      i += 2;
+      continue;
+    }
+    if (ch === '<' && /[A-Z]/u.test(expr[i + 1] ?? '')) {
+      const parsed = scanOneUsage(expr, i);
+      if (parsed !== null && importable.has(parsed.usage.name)) {
+        out = emitTypedCall(out, parsed.usage, base, exprs);
+        if (!names.includes(parsed.usage.name)) names.push(parsed.usage.name);
+        usedCount++;
+        i = parsed.end;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+
+  if (stack.length !== 1) return null;
+  return { text: out, exprs, names, usedCount };
+}
+
+interface LoopChecks {
+  readonly text: string;
+  readonly exprs: RepMapping[];
+  readonly names: Set<string>;
+}
+
+// Reproduces each top-level ${...} expression that contains importable component
+// usages in nested markup, as typed checks. `text` lines go inside the existing
+// `if (false)` block; `exprs` offsets are relative to `text`.
+function buildLoopChecks(body: string, importable: ReadonlySet<string>): LoopChecks {
+  const exprs: RepMapping[] = [];
+  const names = new Set<string>();
+  let text = '';
+  const n = body.length;
+  let i = 0;
+
+  while (i < n) {
+    const ch = body[i] ?? '';
+    if (ch === '$' && (body[i + 1] ?? '') === '{') {
+      const span = scanExprSpan(body, i + 2);
+      if (span === null) break;
+      let rep: ReproducedExpr | null;
+      try {
+        rep = reproduceExpr(span.inner, span.innerStart, importable);
+      } catch {
+        rep = null;
+      }
+      if (rep !== null && rep.usedCount > 0) {
+        const prefix = '    void (';
+        const baseGen = text.length + prefix.length;
+        for (const m of rep.exprs) {
+          exprs.push({ genRel: baseGen + m.genRel, srcOffset: m.srcOffset, len: m.len });
+        }
+        for (const nm of rep.names) names.add(nm);
+        text += prefix + rep.text + ');\n';
+      }
+      i = span.end;
+      continue;
+    }
+    // Top-level component tags are handled by the flat check; skip past them.
+    if (ch === '<' && /[A-Z]/u.test(body[i + 1] ?? '')) {
+      const parsed = scanOneUsage(body, i);
+      if (parsed !== null) { i = parsed.end; continue; }
+    }
+    i++;
+  }
+
+  return { text, exprs, names };
 }
 
 // Preamble for `@model <type-expression>`: the model type is the raw expression
@@ -848,10 +1147,14 @@ export function generateVirtualTs(
   // the render function and a prop-check block before the `return html`.
   if (!isComponent && componentImports !== undefined && componentImports.size > 0) {
     const RETURN_LINE = '  return html`';
-    const usages = scanComponentUsages(body).filter((u) => componentImports.has(u.name));
-    if (usages.length > 0) {
-      const names = [...new Set(usages.map((u) => u.name))];
-      const importLines = names
+    const importableSet = new Set(componentImports.keys());
+    const usages = scanComponentUsages(body).filter((u) => importableSet.has(u.name));
+    // Usages inside ${...} loops, checked in their real scope (issue 060).
+    const loop = buildLoopChecks(body, importableSet);
+    const allNames = new Set<string>([...usages.map((u) => u.name), ...loop.names]);
+
+    if (allNames.size > 0) {
+      const importLines = [...allNames]
         .map((nm) => `import __Cmp_${nm} from '${componentImports.get(nm) ?? ''}';\n`)
         .join('');
 
@@ -860,20 +1163,28 @@ export function generateVirtualTs(
         preamble = preamble.slice(0, fnIdx) + importLines + preamble.slice(fnIdx);
       }
 
-      const { text: checkText, exprs, argSpans } = buildCheckBlock(usages);
+      // Build the flat top-level check block, then splice the loop checks in
+      // before its closing brace so both sit in the one `if (false)` block.
+      const { text: topText, exprs, argSpans } = buildCheckBlock(usages);
+      const closeIdx = topText.lastIndexOf('  }\n');
+      const checkText = topText.slice(0, closeIdx) + loop.text + topText.slice(closeIdx);
+
       const retIdx = preamble.lastIndexOf(RETURN_LINE);
       if (retIdx !== -1) {
         preamble = preamble.slice(0, retIdx) + checkText + preamble.slice(retIdx);
         // Equal-length mappings first (precise wrong-type and tag navigation),
-        // then the unequal-length argument-object mappings. Order matters: an
-        // expression offset is matched by its own mapping before the broader
-        // argument mapping, preserving precise wrong-type positioning; a
-        // missing-prop error at the '{' (outside every expression mapping)
-        // falls through to the argument mapping and lands on the tag name.
+        // then the unequal-length argument-object mappings. Loop-check mappings
+        // are offset by closeIdx because their text was inserted there.
         extraMappings = [
           ...exprs.map((e) => ({
             sourceOffsets: [e.srcOffset],
             generatedOffsets: [retIdx + e.genRel],
+            lengths: [e.len],
+            data: ALL_FEATURES,
+          })),
+          ...loop.exprs.map((e) => ({
+            sourceOffsets: [e.srcOffset],
+            generatedOffsets: [retIdx + closeIdx + e.genRel],
             lengths: [e.len],
             data: ALL_FEATURES,
           })),
@@ -1013,12 +1324,14 @@ function resolveComponentImports(
   if (normalized.includes('/components/')) return map;
 
   const tmvcDir = pathDirname(normalized);
-  for (const usage of scanComponentUsages(source)) {
-    if (map.has(usage.name)) continue;
-    const compPath = findComponentByName(usage.name, fileName, workspaceRoot);
+  // Include nested usages (inside ${...} loops) so loop call-site checking can
+  // import and check them (issue 060), not just top-level tags.
+  for (const name of collectComponentNames(source)) {
+    if (map.has(name)) continue;
+    const compPath = findComponentByName(name, fileName, workspaceRoot);
     if (compPath === null) continue;
     const noExt = compPath.replace(/\.tmvc$/, '');
-    map.set(usage.name, computeRelativeImport(tmvcDir, noExt) + '.tmvc');
+    map.set(name, computeRelativeImport(tmvcDir, noExt) + '.tmvc');
   }
   return map;
 }

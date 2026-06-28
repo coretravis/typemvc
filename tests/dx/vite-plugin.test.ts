@@ -521,6 +521,25 @@ describe('AC9: integration - nested html calls', () => {
   });
 });
 
+describe('component prop spread', () => {
+  it('rewrites ...${obj} to an object spread', () => {
+    const { code } = transformTmvc('<BookCard ...${book} />', 'views/x.tmvc');
+    expect(code).toContain("_callComponent('BookCard', { ...(book) })");
+  });
+
+  it('combines spread with explicit props in source order', () => {
+    const { code } = transformTmvc('<BookCard ...${book} id="${x}" />', 'views/x.tmvc');
+    expect(code).toContain("_callComponent('BookCard', { ...(book), id: x })");
+  });
+
+  it('rejects a malformed spread with no expression', () => {
+    // `...` not followed by ${...} is not a valid spread; the tag is left as-is.
+    const { code } = transformTmvc('<BookCard ...book />', 'views/x.tmvc');
+    expect(code).not.toContain("_callComponent('BookCard'");
+    expect(code).toContain('<BookCard ...book />');
+  });
+});
+
 describe('AC9: integration - backtick escaping in markup', () => {
   it('bare backtick in markup text is escaped', () => {
     const source = '<code>`backtick`</code>';

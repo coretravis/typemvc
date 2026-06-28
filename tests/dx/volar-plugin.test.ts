@@ -17,6 +17,7 @@ import {
   createTmvcSnapshot,
   generateVirtualTs,
   getTmvcDiagnostics,
+  collectComponentNames,
   getControllerCandidatePaths,
   getControllerCandidatePathsByName,
   getComponentCandidatePathsByName,
@@ -1067,6 +1068,16 @@ describe('046: generateVirtualTs emits component imports and checks', () => {
     const { code } = generateVirtualTs('<StatBadge />', 'src/components/Wrapper.tmvc', null, imports);
     expect(code).not.toContain('__Cmp_');
   });
+
+  it('emits a spread in the prop check', () => {
+    const { code } = generateVirtualTs(
+      '<StatBadge ...${context.model.badge} />',
+      'src/views/home/index.tmvc',
+      null,
+      new Map([['StatBadge', './components/StatBadge.tmvc']]),
+    );
+    expect(code).toContain('__Cmp_StatBadge({ ...(context.model.badge) })');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1215,6 +1226,82 @@ describe('@local grammar highlighting (AC7)', () => {
   it('embeds the block body as TypeScript', () => {
     const rule = grammar.repository['local-block'];
     expect(rule?.contentName).toContain('typescript');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 060: component call-site checking inside loops
+// ---------------------------------------------------------------------------
+
+describe('060: component checking inside ${...} loops', () => {
+  const VIEW = 'src/views/home/index.tmvc';
+  const imports = new Map([['BookCard', './components/BookCard.tmvc']]);
+
+  it('reproduces the enclosing map with a typed call so props are checked in scope', () => {
+    const src = '<ul>${books.map((book) => html`<BookCard book="${book}" />`)}</ul>';
+    const { code } = generateVirtualTs(src, VIEW, null, imports);
+    expect(code).toContain("import __Cmp_BookCard from './components/BookCard.tmvc';");
+    expect(code).toContain('void (books.map((book) => html`${__Cmp_BookCard({ book: (book) })}`));');
+  });
+
+  it('preserves the loop variable so it keeps its inferred element type', () => {
+    const src = '${items.map((it) => html`<BookCard book="${it.b}" />`)}';
+    const { code } = generateVirtualTs(src, VIEW, null, imports);
+    expect(code).toContain('items.map((it) => html`${__Cmp_BookCard({ book: (it.b) })}`)');
+  });
+
+  it('maps the looped prop expression back to its source offset', () => {
+    const src = '${books.map((book) => html`<BookCard book="${book}" />`)}';
+    const { code, extraMappings } = generateVirtualTs(src, VIEW, null, imports);
+    const m = extraMappings.find(
+      (mm) =>
+        code.slice(mm.generatedOffsets[0] ?? 0, (mm.generatedOffsets[0] ?? 0) + (mm.lengths[0] ?? 0)) === 'book' &&
+        src.slice(mm.sourceOffsets[0] ?? 0, (mm.sourceOffsets[0] ?? 0) + (mm.lengths[0] ?? 0)) === 'book',
+    );
+    expect(m).toBeDefined();
+  });
+
+  it('supports spread on a looped component', () => {
+    const src = '${books.map((book) => html`<BookCard ...${book} />`)}';
+    const { code } = generateVirtualTs(src, VIEW, null, imports);
+    expect(code).toContain('__Cmp_BookCard({ ...(book) })');
+  });
+
+  it('checks both a top-level usage and a looped usage', () => {
+    const src = '<BookCard book="${first}" />${books.map((book) => html`<BookCard book="${book}" />`)}';
+    const { code } = generateVirtualTs(src, VIEW, null, imports);
+    expect(code).toContain('__Cmp_BookCard({ book: (first) })');
+    expect(code).toContain('void (books.map((book) => html`${__Cmp_BookCard({ book: (book) })}`));');
+  });
+
+  it('does not emit loop checks for unresolved components', () => {
+    const src = '${books.map((book) => html`<Unknown book="${book}" />`)}';
+    const { code } = generateVirtualTs(src, VIEW, null, imports);
+    expect(code).not.toContain('__Cmp_Unknown');
+    expect(code).not.toContain('void (');
+  });
+});
+
+describe('060: collectComponentNames', () => {
+  it('finds top-level and nested component names', () => {
+    const names = collectComponentNames('<A /><ul>${xs.map((x) => html`<B x="${x}" />`)}</ul>');
+    expect(names).toContain('A');
+    expect(names).toContain('B');
+  });
+
+  it('finds deeply nested usages inside nested template literals', () => {
+    const names = collectComponentNames(
+      '${rows.map((r) => html`<tr>${r.cells.map((c) => html`<Cell v="${c}" />`)}</tr>`)}',
+    );
+    expect(names).toContain('Cell');
+  });
+
+  it('dedupes repeated names', () => {
+    expect(collectComponentNames('<A /><A />').filter((n) => n === 'A')).toHaveLength(1);
+  });
+
+  it('returns nothing when there are no component tags', () => {
+    expect(collectComponentNames('<div>${context.model.x}</div>')).toEqual([]);
   });
 });
 

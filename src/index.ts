@@ -33,7 +33,7 @@ export { html } from './renderer/html.js';
 export { Fragment } from './renderer/fragment.js';
 export { safeHtml, SafeHtml } from './renderer/safe-html.js';
 export { prevent, stop } from './renderer/modifiers.js';
-export { keyed } from './renderer/keyed.js';
+export { keyed, keyedMap } from './renderer/keyed.js';
 export type { KeyedFragment } from './renderer/keyed.js';
 
 // Dependency injection

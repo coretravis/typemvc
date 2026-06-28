@@ -32,3 +32,26 @@ export function isKeyedFragment(value: unknown): value is KeyedFragment {
     Array.isArray(v.nodes)
   );
 }
+
+/**
+ * Maps a list to keyed fragments in one step, the clean form for a reactive list
+ * of components or rows. Bind the result to a signal for in place reconciliation.
+ *
+ * @param items - The source list.
+ * @param key - Returns a stable key per item (an id, not the array index).
+ * @param render - Renders an item to a {@link Fragment}.
+ * @returns One {@link KeyedFragment} per item, in order.
+ * @example
+ * ```ts
+ * data.set('rows', computed(() =>
+ *   keyedMap(this.books.get(), (b) => b.id, (b) => html`<BookCard book="${b}" />`)
+ * ));
+ * ```
+ */
+export function keyedMap<T>(
+  items: readonly T[],
+  key: (item: T) => string | number,
+  render: (item: T) => Fragment,
+): KeyedFragment[] {
+  return items.map((item) => keyed(key(item), render(item)));
+}

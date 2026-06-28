@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { signal } from '../../src/reactivity/signal.js';
 import { flush } from '../../src/reactivity/scheduler.js';
 import { html } from '../../src/renderer/html.js';
-import { keyed } from '../../src/renderer/keyed.js';
+import { keyed, keyedMap } from '../../src/renderer/keyed.js';
 import type { KeyedFragment } from '../../src/renderer/keyed.js';
 import { clearRegion, reconcile } from '../../src/renderer/reconciler.js';
 
@@ -446,6 +446,39 @@ describe('keyed() helper (AC2)', () => {
   it('is exported from the public barrel', async () => {
     const barrel = await import('../../src/index.js');
     expect(typeof barrel.keyed).toBe('function');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// keyedMap helper
+// ---------------------------------------------------------------------------
+
+describe('keyedMap', () => {
+  it('maps each item to a keyed fragment with the given key', () => {
+    const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    const kfs = keyedMap(items, (x) => x.id, (x) => html`<li>${x.id}</li>`);
+    expect(kfs.map((k) => k.key)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('drives a reactive list through reconcile', () => {
+    const items = signal([{ id: 'a' }, { id: 'b' }]);
+    const list = (): KeyedFragment[] =>
+      keyedMap(items.get(), (x) => x.id, (x) => html`<li>${x.id}</li>`);
+
+    const { end } = makeRegion();
+    let map = reconcile(end, new Map(), list());
+    const parent = end.parentNode as HTMLElement;
+    expect(itemTexts(parent)).toEqual(['a', 'b']);
+
+    items.set([{ id: 'a' }, { id: 'c' }, { id: 'b' }]);
+    map = reconcile(end, map, list());
+    expect(itemTexts(parent)).toEqual(['a', 'c', 'b']);
+    expect(map.size).toBe(3);
+  });
+
+  it('is exported from the public barrel', async () => {
+    const barrel = await import('../../src/index.js');
+    expect(typeof barrel.keyedMap).toBe('function');
   });
 });
 

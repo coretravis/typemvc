@@ -648,7 +648,7 @@ export function escapeTmvcMarkup(source: string): string {
 // Internal attribute representation produced by parseComponentTag.
 interface AttrProp {
   readonly name: string;
-  readonly kind: 'boolean' | 'static' | 'expr' | 'template';
+  readonly kind: 'boolean' | 'static' | 'expr' | 'template' | 'spread';
   readonly value: string;
 }
 
@@ -742,6 +742,8 @@ function buildComponentExpr(
         return `${attr.name}: ${attr.value}`;
       case 'template':
         return `${attr.name}: \`${attr.value.replace(/`/gu, '\\`')}\``;
+      case 'spread':
+        return `...(${attr.value})`;
     }
   });
   props.push(...extraProps);
@@ -959,6 +961,18 @@ function parseComponentTag(
         output: buildComponentExpr(tagName, attrs, extraProps),
         end: scanned.end,
       };
+    }
+
+    // Spread props: <Comp ...${obj} />
+    if (ch === '.' && (source[i + 1] ?? '') === '.' && (source[i + 2] ?? '') === '.') {
+      let j = i + 3;
+      while (j < n && /\s/u.test(source[j] ?? '')) j++;
+      if ((source[j] ?? '') !== '$' || (source[j + 1] ?? '') !== '{') return null;
+      const exprResult = scanExpression(source, j + 2);
+      if (exprResult === null) return null;
+      attrs.push({ name: '', kind: 'spread', value: exprResult.content });
+      i = exprResult.end;
+      continue;
     }
 
     // Must be the start of an attribute name

@@ -405,6 +405,16 @@ describe('component tag syntax: parseTmvc integration', () => {
     expect(elements[0]?.textContent).toBe('42');
   });
 
+  it('component receives spread props from ...${obj}', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access -- ComponentFunction uses any props
+    _setComponentRegistry({ Badge: (p) => html`<span>${String(p.label ?? '')}</span>` });
+
+    const fn = parseTmvc('<Badge ...${context.data.obj} />');
+    const frag = fn(makeContext({ obj: { label: 'spread' } }));
+    const elements = frag.nodes.filter((n): n is Element => n instanceof Element);
+    expect(elements[0]?.textContent).toBe('spread');
+  });
+
   it('component tag alongside native markup renders both', () => {
     _setComponentRegistry({
       Tag: () => html`<b>tag</b>`,

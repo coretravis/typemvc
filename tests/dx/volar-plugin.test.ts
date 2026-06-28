@@ -957,11 +957,11 @@ describe('044: getControllerCandidatePathsByName', () => {
 // ---------------------------------------------------------------------------
 
 describe('045: @props typed component props', () => {
-  it('emits a typed props parameter from the directive', () => {
+  it('emits the props type inline in the render parameter (no alias)', () => {
     const src = '@props { label: string; value: number }\n<span>${props.label}</span>';
     const { code } = generateVirtualTs(src, 'src/components/StatBadge.tmvc', null);
-    expect(code).toContain('type __TmvcProps = { label: string; value: number } & { readonly children?: Fragment };');
-    expect(code).toContain('function render(props: __TmvcProps)');
+    expect(code).toContain('function render(props: { label: string; value: number } & { readonly children?: Fragment })');
+    expect(code).not.toContain('__TmvcProps');
     expect(code).not.toContain('@props');
   });
 
@@ -970,10 +970,18 @@ describe('045: @props typed component props', () => {
     expect(code).toContain('{ readonly children?: Fragment } & Record<string, unknown>');
   });
 
-  it('accepts a raw import() props type', () => {
+  it('accepts a raw import() props type inline', () => {
     const src = "@props import('../models/BadgeProps').BadgeProps\n<span>x</span>";
     const { code } = generateVirtualTs(src, 'src/components/StatBadge.tmvc', null);
-    expect(code).toContain("type __TmvcProps = import('../models/BadgeProps').BadgeProps & { readonly children?: Fragment };");
+    expect(code).toContain("function render(props: import('../models/BadgeProps').BadgeProps & { readonly children?: Fragment })");
+  });
+
+  it('inlines a multi-line @props block (issue 061)', () => {
+    const src = '@props {\n  id: string;\n  title: string;\n}\n<span>${props.title}</span>';
+    const { code } = generateVirtualTs(src, 'src/components/Card.tmvc', null);
+    expect(code).toContain('id: string;');
+    expect(code).toContain('render(props:');
+    expect(code).not.toContain('__TmvcProps');
   });
 });
 
@@ -1153,8 +1161,7 @@ describe('@local virtual TypeScript', () => {
 
   it('types props from @props so the block sees the declared shape (AC2)', () => {
     const { code } = generateVirtualTs(COMPONENT_LOCAL, COMP_ID, null);
-    expect(code).toContain('type __TmvcProps = { title: string } & { readonly children?: Fragment };');
-    expect(code).toContain('render(props: __TmvcProps)');
+    expect(code).toContain('render(props: { title: string } & { readonly children?: Fragment })');
   });
 
   it('maps the lifted block region back to the source block region (AC3)', () => {

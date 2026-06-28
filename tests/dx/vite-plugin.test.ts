@@ -87,6 +87,22 @@ describe('044: extractDirective', () => {
     );
     expect(directive).toEqual({ kind: 'model-from', controller: 'FooController', action: 'bar' });
   });
+
+  it('extracts a multi-line @props block as one directive (issue 061)', () => {
+    const src = '@props {\n  id: string;\n  title: string;\n}\n<span>${props.title}</span>';
+    const { directive, body } = extractDirective(src);
+    expect(directive).toEqual({ kind: 'props', expr: '{\n  id: string;\n  title: string;\n}' });
+    expect(body.split('\n').length).toBe(src.split('\n').length);
+    expect(body.length).toBe(src.length);
+    expect(body.split('\n')[4]).toBe('<span>${props.title}</span>');
+    expect(body).not.toContain('@props');
+    expect(body).not.toContain('id: string');
+  });
+
+  it('extracts a multi-line @model type block', () => {
+    const { directive } = extractDirective('@model {\n  a: number;\n}\n<p>${context.model.a}</p>');
+    expect(directive).toEqual({ kind: 'model-type', expr: '{\n  a: number;\n}' });
+  });
 });
 
 describe('044: transformTmvc strips the directive from runtime output', () => {

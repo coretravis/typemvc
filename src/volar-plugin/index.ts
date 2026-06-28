@@ -165,13 +165,12 @@ const PREAMBLE_REACTIVITY =
 const RETURN_HTML = '  return html`';
 
 // With @props <type>: props are the declared type, plus an always-available
-// optional children slot (any caller may project content, issue 043).
+// optional children slot
 function buildComponentPropsPreamble(expr: string): string {
   return (
     PREAMBLE_IMPORTS_COMPONENT +
-    `type __TmvcProps = ${expr} & { readonly children?: Fragment };\n` +
     '\n' +
-    'export default function render(props: __TmvcProps): Fragment {\n' +
+    `export default function render(props: ${expr} & { readonly children?: Fragment }): Fragment {\n` +
     '  return html`'
   );
 }

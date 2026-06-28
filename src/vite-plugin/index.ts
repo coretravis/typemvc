@@ -191,32 +191,57 @@ export type TmvcDirective =
   | { readonly kind: 'model-type'; readonly expr: string }
   | { readonly kind: 'props'; readonly expr: string };
 
-// Matches the first non-blank line if it is an @model or @props directive.
-// Group 1 is the keyword, group 2 is the payload.
-const DIRECTIVE_RE = /^[ \t]*@(model|props)[ \t]+(.+?)[ \t]*$/;
+// Matches the directive head (keyword plus following whitespace) at the start of
+// the first non-blank line.
+const DIRECTIVE_HEAD_RE = /^[ \t]*@(model|props)[ \t]+/;
 const MODEL_FROM_RE = /^from[ \t]+([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)$/;
 
+function scanDirectiveEnd(source: string, start: number): number {
+  const n = source.length;
+  let i = start;
+  let depth = 0;
+  while (i < n) {
+    const ch = source[i] ?? '';
+    if (ch === '\\') { i += 2; continue; }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      i++;
+      while (i < n) {
+        const c = source[i] ?? '';
+        if (c === '\\') { i += 2; continue; }
+        if (c === quote) { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    if (ch === '{' || ch === '[' || ch === '(') { depth++; i++; continue; }
+    if (ch === '}' || ch === ']' || ch === ')') { if (depth > 0) depth--; i++; continue; }
+    if (ch === '\n') { if (depth <= 0) return i; i++; continue; }
+    i++;
+  }
+  return n;
+}
+
 /**
- * Extracts the @model/@props directive from the first non-blank line of a .tmvc
- * source and returns the body with that directive whited out (replaced by an
- * equal-length run of spaces, newline preserved). Whiting out in place keeps the
- * line count and every byte offset identical, so source maps and Volar mappings
- * require no adjustment.
+ * Extracts the @model/@props directive starting on the first non-blank line of a
+ * .tmvc source and returns the body with that directive whited out (replaced by
+ * spaces, newlines preserved). The payload may span multiple lines when it opens
+ * a bracket, for example a multi-line `@props { ... }` object type. Whiting out
+ * in place keeps the line count and every byte offset identical, so source maps
+ * and Volar mappings require no adjustment.
  *
- * Only the first non-blank line is considered: a later directive line is left as
- * literal text here and flagged by validateTmvcSource instead.
+ * Only the first non-blank line begins a directive: a later directive line is
+ * left as literal text here and flagged by validateTmvcSource instead.
  */
 export function extractDirective(source: string): {
   body: string;
   directive: TmvcDirective | null;
 } {
-  const newlineIdx = source.indexOf('\n');
-  // Index range of the first line (without its trailing newline).
+  // Find the first non-blank line.
   let lineStart = 0;
-  let lineEnd = newlineIdx === -1 ? source.length : newlineIdx;
+  let lineEnd = source.indexOf('\n');
+  if (lineEnd === -1) lineEnd = source.length;
   let line = source.slice(lineStart, lineEnd);
-
-  // Skip leading blank lines to find the first non-blank line.
   while (line.trim() === '' && lineEnd < source.length) {
     lineStart = lineEnd + 1;
     const next = source.indexOf('\n', lineStart);
@@ -224,13 +249,19 @@ export function extractDirective(source: string): {
     line = source.slice(lineStart, lineEnd);
   }
 
-  const match = DIRECTIVE_RE.exec(line);
-  if (match === null) {
+  const head = DIRECTIVE_HEAD_RE.exec(line);
+  if (head === null) {
     return { body: source, directive: null };
   }
 
-  const keyword = match[1] ?? '';
-  const payload = match[2] ?? '';
+  const keyword = head[1] ?? '';
+  const payloadStart = lineStart + head[0].length;
+  const regionEnd = scanDirectiveEnd(source, payloadStart);
+  const payload = source.slice(payloadStart, regionEnd).trim();
+  if (payload === '') {
+    return { body: source, directive: null };
+  }
+
   let directive: TmvcDirective;
   if (keyword === 'props') {
     directive = { kind: 'props', expr: payload };
@@ -241,9 +272,13 @@ export function extractDirective(source: string): {
       : { kind: 'model-type', expr: payload };
   }
 
-  // White out the directive line in place: same length, newline preserved.
-  const blanked = ' '.repeat(lineEnd - lineStart);
-  const body = source.slice(0, lineStart) + blanked + source.slice(lineEnd);
+  // White out the whole directive region, preserving newlines so the line count
+  // and every later offset stay identical.
+  let blanked = '';
+  for (let k = lineStart; k < regionEnd; k++) {
+    blanked += source[k] === '\n' ? '\n' : ' ';
+  }
+  const body = source.slice(0, lineStart) + blanked + source.slice(regionEnd);
 
   return { body, directive };
 }

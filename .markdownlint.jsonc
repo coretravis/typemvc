@@ -1,0 +1,11 @@
+{
+  // Keep a Changelog repeats "### Added" / "### Fixed" under every version
+  // heading, which is the point of the format. Scope the duplicate-heading rule
+  // to siblings so that stays legal.
+  "MD024": { "siblings_only": true },
+
+  // The repo's markdown is prose-wrapped by eye, not to a hard column. README,
+  // CHANGELOG, and the .tmvc format guide all run well past 80, so the
+  // line-length rule only produces noise.
+  "MD013": false
+}

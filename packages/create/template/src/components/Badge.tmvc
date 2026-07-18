@@ -1,0 +1,9 @@
+@props { label: string }
+
+<!--
+  A component and the rules that make it look like one live side by side. The
+  sibling Badge.tmvc.css is imported for you because it shares this file's name:
+  there is no directive to write. Rename or delete this file and its styles go
+  with it.
+-->
+<span class="badge">${props.label}</span>

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "TypeMVC Attribute Expressions",
+  "scopeName": "text.html.tmvc.attr-expr",
+  "injectionSelector": "L:text.html.tmvc string.quoted.double.html, L:text.html.tmvc string.quoted.single.html",
+  "patterns": [
+    {
+      "include": "#interpolation"
+    }
+  ],
+  "repository": {
+    "interpolation": {
+      "name": "meta.template.expression.tmvc",
+      "begin": "(\\$\\{)",
+      "end": "(\\})",
+      "applyEndPatternLast": 1,
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.template-expression.begin.tmvc"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.template-expression.end.tmvc"
+        }
+      },
+      "contentName": "meta.embedded.block.typescript",
+      "patterns": [
+        {
+          "include": "#nested-braces"
+        },
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "nested-braces": {
+      "name": "meta.block.ts",
+      "begin": "(\\{)",
+      "end": "(\\})",
+      "applyEndPatternLast": 1,
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.section.block.begin.bracket.curly.ts"
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.block.end.bracket.curly.ts"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#nested-braces"
+        },
+        {
+          "include": "source.ts"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "name": "tmvc-syntax",
+  "displayName": "TypeMVC Syntax",
+  "description": "Syntax highlighting and language intelligence for TypeMVC .tmvc view files",
+  "version": "0.4.0",
+  "publisher": "typemvc",
+  "license": "MIT",
+  "homepage": "https://github.com/coretravis/typemvc#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coretravis/typemvc.git",
+    "directory": "extensions/tmvc-syntax"
+  },
+  "bugs": {
+    "url": "https://github.com/coretravis/typemvc/issues"
+  },
+  "keywords": [
+    "typemvc",
+    "tmvc",
+    "syntax highlighting",
+    "language server"
+  ],
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "main": "./out/extension.js",
+  "icon": "icon.png",
+  "activationEvents": [
+    "onLanguage:tmvc"
+  ],
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "tmvc",
+        "aliases": [
+          "TypeMVC",
+          "TypeMVC View"
+        ],
+        "extensions": [
+          ".tmvc"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tmvc",
+        "scopeName": "text.html.tmvc",
+        "path": "./syntaxes/tmvc.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.typescript": "typescript"
+        }
+      },
+      {
+        "scopeName": "text.html.tmvc.attr-expr",
+        "path": "./syntaxes/tmvc-attribute-expressions.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.typescript": "typescript"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "vscode:package": "npm run build && vsce package",
+    "vscode:publish": "npm run build && vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.82.0",
+    "@volar/language-server": "~2.4.0",
+    "@vscode/vsce": "latest",
+    "esbuild": "^0.28.1",
+    "volar-service-typescript": "volar-2.4",
+    "vscode-languageclient": "^9.0.1"
+  },
+  "dependencies": {
+    "typescript": "^5.0.0"
+  }
+}

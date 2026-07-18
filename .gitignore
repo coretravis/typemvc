@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+extensions/tmvc-syntax/out/
+
+# Packaged VS Code extension artifacts
+*.vsix
+
+# Test coverage
+coverage/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Editor directories
+.vscode/
+.vs/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# TypeScript incremental compilation
+*.tsbuildinfo
+
+# Miscellaneous
+docs/system/
+
+# Local-only language-server test sandbox (not part of the published package)
+sandbox/

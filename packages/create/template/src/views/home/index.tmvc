@@ -1,0 +1,24 @@
+@model from HomeController.index
+
+<main>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/does-not-exist">Broken link (404)</a>
+  </nav>
+
+  <h1>${context.model.title} <Badge label="new" /></h1>
+
+  <p>
+    This number is a <code>signal()</code>. The buttons call
+    <code>@action</code> methods on the controller, and only the text node below
+    re-renders. No page reload, no virtual DOM.
+  </p>
+
+  <p class="count">${context.model.count}</p>
+  <p>x 2 = ${context.model.doubled}</p>
+
+  <div>
+    <button onclick="${context.increment}">+1</button>
+    <button onclick="${context.reset}">Reset</button>
+  </div>
+</main>

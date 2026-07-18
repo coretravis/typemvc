@@ -1,0 +1,16 @@
+# Source and build tooling: only out/ is shipped.
+src/**
+build.mjs
+tsconfig.json
+
+# Dev-only docs and lockfile.
+DEVELOPMENT.md
+package-lock.json
+.gitignore
+
+# Source maps are not needed by end users.
+out/**/*.map
+
+# Keep: out/*.js, syntaxes/, language-configuration.json, README.md,
+# CHANGELOG.md, LICENSE, and production node_modules (typescript is resolved
+# at runtime by the language server).

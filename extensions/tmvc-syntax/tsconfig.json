@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "strict": true,
+    "outDir": "./out",
+    "sourceMap": true,
+    "lib": ["ES2020"],
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@typemvc/core/volar": ["../../dist/volar-plugin/index.d.cts"]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "out"
+  ]
+}

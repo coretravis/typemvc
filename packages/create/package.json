@@ -1,0 +1,55 @@
+{
+  "name": "@typemvc/create",
+  "version": "0.4.0",
+  "description": "Project initializer for TypeMVC. Run with: npm create @typemvc",
+  "type": "module",
+  "license": "MIT",
+  "author": "coretravis",
+  "homepage": "https://github.com/coretravis/typemvc#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coretravis/typemvc.git",
+    "directory": "packages/create"
+  },
+  "bugs": {
+    "url": "https://github.com/coretravis/typemvc/issues"
+  },
+  "keywords": [
+    "typemvc",
+    "create",
+    "scaffold",
+    "starter",
+    "init"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "create-typemvc": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "template",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ci": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "prepublishOnly": "pnpm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@types/node": "^25.9.3",
+    "eslint": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vitest": "latest"
+  }
+}

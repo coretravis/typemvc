@@ -1,0 +1,19 @@
+/* Tokens own appearance. Colour, radius, spacing and type live here as custom
+   properties, and a component's stylesheet consumes them instead of hard coding
+   values. This is the one file to edit to reskin the app. */
+:root {
+  --color-text: #1a1d23;
+  --color-accent: #2f6fed;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f5f6f8;
+  --color-border: #d8dce3;
+
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+
+  --font-body: system-ui, sans-serif;
+}

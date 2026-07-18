@@ -1,0 +1,18 @@
+{
+  "name": "{{projectName}}",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@typemvc/core": "^0.4.0"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a problem with @typemvc/core
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A minimal reproduction (code snippet, repo link, or steps).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: "@typemvc/core version"
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, OS, bundler (Vite version), browser if relevant.
+    validations:
+      required: true
